@@ -926,3 +926,15 @@ def gen_random_xy_hamiltonian(nb_spins,
                 H[ii, jj] = (J + delta*np.random.rand()) / np.abs(ii - jj)**alpha
     return (H + H.transpose())/2
 
+
+def _diff_between_x(X_in):
+        """ Computes the euclidian distance between adjacent X values
+        TODO: Might need to vectorize this in future
+        
+        Paramaters 
+        -----
+        X_in : arrave of x-vales, with new x-value of each row"""
+        dX = X_in[1:] - X_in[0:-1]
+        dX = [dx.dot(dx) for dx in dX]
+        dX = np.sqrt(np.array(dX))
+        return dX

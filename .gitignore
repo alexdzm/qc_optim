@@ -2,6 +2,7 @@
 /results_pkl
 /core/.ipynb_checkpoints
 *__pycache__
+*.pkl
 
 # mac finder files
 *.DS_Store 

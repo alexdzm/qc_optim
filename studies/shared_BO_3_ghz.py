@@ -5,6 +5,8 @@ Created on Mon Jun 8 09:15:32 2020
 @author: Kiran
 """
 
+#%% IMPORTS
+
 import copy
 import dill
 import time
@@ -20,21 +22,18 @@ from qcoptim import optimisers as op
 
 
 
-
 #%% DEFAULTS 
 
 # ======================== /
 # Defaults and global objects
 # ======================== /
 pi= np.pi
-NB_SHOTS_DEFAULT = 512
+NB_SHOTS_DEFAULT = 2048
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 10
+NB_TRIALS = 15
 NB_CALLS = 150
-NB_IN_IT_RATIO = 0.5
-NB_OPT_VEC = [1,2,3]
-NB_SPINS = 7
-NB_DEPTH = 2
+NB_IN_IT_RATIO = 0.5002048
+NB_OPT_VEC = [1, 2, 3, 4]
 SAVE_DATA = True
 
 nb_init_vec = []
@@ -57,15 +56,10 @@ np.random.seed(int(time.time()))
 # ======================== /
 # Generate ansatz and cost here
 # ======================== /
-hamiltonian = ut.gen_random_xy_hamiltonian(NB_SPINS,
-                                           U = 0.0,
-                                           J = .0,
-                                           delta = 0.0,
-                                           alpha = 2.0) / NB_SPINS
-anz = az.RegularRandomU3ParamAnsatz(NB_SPINS, NB_DEPTH)
-cst = cost.RandomXYCost(anz, inst, hamiltonian)
+x_sol = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
+anz = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx0, x_sol = x_sol)
+cst = cost.GHZPauliCost(anz, inst, invert = True)
 
-len(NB_OPT_VEC)*3*NB_CALLS*NB_TRIALS
 
 # ======================== /
 #  Default BO optim args
@@ -162,7 +156,6 @@ for ct, (opt, trial) in enumerate(runner_dict.keys()):
 # Save data
 # ======================== /
 fname = str(cst.__class__).split('cost.')[1].split("'")[0]
-fname += '_{}qubits'.format(NB_SPINS)
 fname = fname + '_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + '.pkl'
 if SAVE_DATA:
     dict_to_dill = {'df':df,
@@ -170,21 +163,30 @@ if SAVE_DATA:
                     'example_optim':example_optim,
                     'NB_IN_IT_RATIO':NB_IN_IT_RATIO,
                     'NB_CALLS':NB_CALLS,
-                    'NB_SHOTS_DEFAULT':NB_SHOTS_DEFAULT,
-                    'hamiltonian':hamiltonian}
+                    'NB_SHOTS_DEFAULT':NB_SHOTS_DEFAULT}
     with open(fname, 'wb') as f:                                                                                                                                                                                                          
         dill.dump(dict_to_dill, f) 
 
 
 
-
-
 #%% LOAD / PLOT DATA
 # ========================= / 
-# Files:    fname = 'RandomXYCost_7qubits_150calls_0p5ratio.pkl'  # 3 optims 150 calls 512 shots
-#           fname = 'RandomXYCost_7qubits_150calls_0p67ratio.pkl' # 2 optims 150 calls 512 shots
+# Files: 
+#        1 optims         
+#        fname = 'GHZPauliCost_200calls_0p5001024ratio.pkl'
+#        fname = 'GHZPauliCost_200calls_0p50064ratio.pkl'
+#        fname = 'GHZPauliCost_200calls_0p5002048ratio.pkl'
+#
+#        4 optims 
+#        fname = 'GHZPauliCost_150calls_0p50064ratio.pkl'        # 4 optim 15 trials 64 shots/call
+#        fname = 'GHZPauliCost_150calls_0p5001024ratio.pkl'    # 4 optims 15 trial 1024 shots/call
+#        fname = 'GHZPauliCost_150calls_0p5002048ratio.pkl'
+#
+#        fname = 'GHZWitness2Cost_150calls_0p5001024ratio.pkl' 
+#        fname = 'GHZWitness2Cost_150calls_0p5002048ratio.pkl' 
+#        fname = 'GHZWitness2Cost_150calls_0p50064ratio.pkl'
 # ========================= /
-if SAVE_DATA:
+if True: 
     import copy
     import dill
     import time
@@ -280,3 +282,19 @@ f.show()
 axes[0].set_ylabel('x_{i + 1} - x_{i}')
 [ax.set_xlabel('iter') for ax in axes]
 f.show()
+
+
+
+
+# plt.figure(4)
+# for ii in range(len(df)):
+#     m = df.iloc[ii]['mean'] 
+#     v = df.iloc[ii]['std']
+#     t = df.iloc[ii]['trial']
+#     o = df.iloc[ii]['nb_opt']
+#     plt.plot(o + 0.1*t/NB_TRIALS, np.log10(m), 'b.')
+# plt.ylabel('log10 Cost')
+
+print('NB_SHOTS_DEFAULT: ' + str(NB_SHOTS_DEFAULT))
+print('NB_TRIALS: ' + str(NB_TRIALS))
+print('NB_OPT_VEC: ' + str(NB_OPT_VEC))
