@@ -100,8 +100,9 @@ class CostInterface(metaclass=abc.ABCMeta):
             #assert self.instance==other.instance, "Cannot add two cost functions with different quantum instances."
             
             # copy to decouple the output from the summed objects
-            tmp_1 = copy.deepcopy(self)
-            tmp_2 = copy.deepcopy(other)
+            # currently not a deepcopy, a qiskit bug means some objs cannot be copied
+            tmp_1 = copy.copy(self)
+            tmp_2 = copy.copy(other)
             
             # make summed object
             sum_cost = GenericCost()
@@ -115,7 +116,8 @@ class CostInterface(metaclass=abc.ABCMeta):
         elif (isinstance(other, (int, float, complex)) and not isinstance(other, bool)):
             # case: other is scalar
 
-            sum_cost = copy.deepcopy(self) # not a deepcopy
+            # currently not a deepcopy, a qiskit bug means some objs cannot be copied
+            sum_cost = copy.copy(self) 
             sum_cost.ansatz = self.ansatz # allows chained operations
             sum_cost.evaluate_cost = (lambda x,**kwargs : other + self.evaluate_cost(x,**kwargs))
             return sum_cost
@@ -128,7 +130,8 @@ class CostInterface(metaclass=abc.ABCMeta):
         '*' operator overload to allow multiplying Cost objects with a
         scalar
         """
-        scaled_cost = copy.deepcopy(self)
+        # currently not a deepcopy, a qiskit bug means some objs cannot be copied
+        scaled_cost = copy.copy(self)
         scaled_cost.ansatz = self.ansatz # allows chained operations
         scaled_cost.evaluate_cost = (lambda x,**kwargs : scalar*self.evaluate_cost(x,**kwargs))
         return scaled_cost
@@ -1105,13 +1108,13 @@ class CrossFidelity(CostInterface):
         """ 
         setter for comparison_results, perform validations
         """
-        if (not results is None) and (not type(results) is dict):
-            results = results.to_dict()
-
         # check if comparison_results contains the crossfidelity_metadata
         # tags and if it does compare them, if these comparisons fail then
         # crash, if the crossfidelity_metadata is missing issue a warning
         if not results is None:
+            if not type(results) is dict:
+                results = results.to_dict()
+
             comparison_metadata = None
             try:
                 comparison_metadata = results['crossfidelity_metadata']
@@ -1124,9 +1127,19 @@ class CrossFidelity(CostInterface):
                 _err_msg = ('Input results dictionary contains data that is incompatible with the '
                         +' this CrossFidelity object.')
                 assert self._seed == comparison_metadata['seed'],_err_msg
-                assert self._nb_random == comparison_metadata['nb_random'],_err_msg
+                assert (not self._nb_random > comparison_metadata['nb_random']),_err_msg
                 assert self._prefix == comparison_metadata['prefix'],_err_msg
 
+            # bug fix, need counts dict keys to be hex values
+            for idx,v in enumerate(results['results']):
+                new_counts = {}
+                for ck,cv in v['data']['counts'].items():
+                    # detect it is not hex
+                    if not ck[:2]=='0x':
+                        ck = hex(int(ck,2))
+                    new_counts[ck] = cv
+                v['data']['counts'] = new_counts
+    
         self._comparison_results = results
 
     def _gen_random_measurements(self):

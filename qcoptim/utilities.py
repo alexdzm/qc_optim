@@ -52,6 +52,7 @@ import numpy as np
 import qiskit as qk
 import matplotlib.pyplot as plt
 
+from qiskit.quantum_info import Pauli
 # qiskit noise modules
 from qiskit.providers.aer.noise import NoiseModel
 from qiskit.providers.aer import noise
@@ -59,7 +60,7 @@ from qiskit.providers.aer.noise.errors import ReadoutError
 # qiskit chemistry objects
 from qiskit.chemistry import FermionicOperator
 from qiskit.chemistry.drivers import PySCFDriver, UnitsType
-from qiskit.aqua.operators import Z2Symmetries
+from qiskit.aqua.operators import Z2Symmetries, WeightedPauliOperator
 
 NoneType = type(None)
 pi = np.pi
@@ -694,20 +695,28 @@ def get_H2_data(dist):
         energy to give the real physical energy. This includes the replusive energy between
         the nuclei and the energy shift of the frozen orbitals.
     """
-    driver = PySCFDriver(atom="H .0 .0 .0; H .0 .0 " + str(dist), 
-                         unit=UnitsType.ANGSTROM, 
-                         charge=0, 
-                         spin=0, 
-                         basis='sto3g',
-                        )
-    molecule = driver.run()
-    repulsion_energy = molecule.nuclear_repulsion_energy
-    num_particles = molecule.num_alpha + molecule.num_beta
-    num_spin_orbitals = molecule.num_orbitals * 2
-    ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
-    qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
-    qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
-    shift = repulsion_energy
+    # I have experienced some crashes
+    from qiskit.chemistry import QiskitChemistryError
+    _retries = 10
+    for i in range(_retries):
+        try:
+            driver = PySCFDriver(atom="H .0 .0 .0; H .0 .0 " + str(dist), 
+                                 unit=UnitsType.ANGSTROM, 
+                                 charge=0, 
+                                 spin=0, 
+                                 basis='sto3g',
+                                )
+            molecule = driver.run()
+            repulsion_energy = molecule.nuclear_repulsion_energy
+            num_particles = molecule.num_alpha + molecule.num_beta
+            num_spin_orbitals = molecule.num_orbitals * 2
+            ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
+            qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
+            qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
+            shift = repulsion_energy
+            break
+        except QiskitChemistryError:
+            pass
 
     return qubitOp, shift
 
@@ -743,33 +752,41 @@ def get_LiH_data(dist):
         energy to give the real physical energy. This includes the replusive energy between
         the nuclei and the energy shift of the frozen orbitals.
     """
-    driver = PySCFDriver(atom="Li .0 .0 .0; H .0 .0 " + str(dist), 
-                         unit=UnitsType.ANGSTROM, 
-                         charge=0, 
-                         spin=0, 
-                         basis='sto3g',
-                        )
-    molecule = driver.run()
-    freeze_list = [0]
-    remove_list = [-3, -2]
-    repulsion_energy = molecule.nuclear_repulsion_energy
-    num_particles = molecule.num_alpha + molecule.num_beta
-    num_spin_orbitals = molecule.num_orbitals * 2
-    remove_list = [x % molecule.num_orbitals for x in remove_list]
-    freeze_list = [x % molecule.num_orbitals for x in freeze_list]
-    remove_list = [x - len(freeze_list) for x in remove_list]
-    remove_list += [x + molecule.num_orbitals - len(freeze_list)  for x in remove_list]
-    freeze_list += [x + molecule.num_orbitals for x in freeze_list]
-    ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
-    ferOp, energy_shift = ferOp.fermion_mode_freezing(freeze_list)
-    num_spin_orbitals -= len(freeze_list)
-    num_particles -= len(freeze_list)
-    ferOp = ferOp.fermion_mode_elimination(remove_list)
-    num_spin_orbitals -= len(remove_list)
-    qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
-    #qubitOp = qubitOp.two_qubit_reduced_operator(num_particles)
-    qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
-    shift = repulsion_energy + energy_shift
+    # I have experienced some crashes
+    from qiskit.chemistry import QiskitChemistryError
+    _retries = 10
+    for i in range(_retries):
+        try:
+            driver = PySCFDriver(atom="Li .0 .0 .0; H .0 .0 " + str(dist), 
+                                 unit=UnitsType.ANGSTROM, 
+                                 charge=0, 
+                                 spin=0, 
+                                 basis='sto3g',
+                                )
+            molecule = driver.run()
+            freeze_list = [0]
+            remove_list = [-3, -2]
+            repulsion_energy = molecule.nuclear_repulsion_energy
+            num_particles = molecule.num_alpha + molecule.num_beta
+            num_spin_orbitals = molecule.num_orbitals * 2
+            remove_list = [x % molecule.num_orbitals for x in remove_list]
+            freeze_list = [x % molecule.num_orbitals for x in freeze_list]
+            remove_list = [x - len(freeze_list) for x in remove_list]
+            remove_list += [x + molecule.num_orbitals - len(freeze_list)  for x in remove_list]
+            freeze_list += [x + molecule.num_orbitals for x in freeze_list]
+            ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
+            ferOp, energy_shift = ferOp.fermion_mode_freezing(freeze_list)
+            num_spin_orbitals -= len(freeze_list)
+            num_particles -= len(freeze_list)
+            ferOp = ferOp.fermion_mode_elimination(remove_list)
+            num_spin_orbitals -= len(remove_list)
+            qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
+            #qubitOp = qubitOp.two_qubit_reduced_operator(num_particles)
+            qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
+            shift = repulsion_energy + energy_shift
+            break
+        except QiskitChemistryError:
+            pass
 
     return qubitOp, shift
 
@@ -831,7 +848,7 @@ def get_TFIM_qubit_op(
     # X terms
     pauli_terms += [ (-B,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
 
-    qubitOp = wpo(pauli_terms)
+    qubitOp = WeightedPauliOperator(pauli_terms)
 
     return qubitOp
 
