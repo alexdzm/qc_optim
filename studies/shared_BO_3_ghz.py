@@ -5,6 +5,8 @@ Created on Mon Jun 8 09:15:32 2020
 @author: Kiran
 """
 
+#%% IMPORTS
+
 import copy
 import dill
 import time
@@ -20,18 +22,19 @@ from qcoptim import optimisers as op
 
 
 
+#%% DEFAULTS 
 
-# ===================
+# ======================== /
 # Defaults and global objects
-# ===================
+# ======================== /
 pi= np.pi
-NB_SHOTS_DEFAULT = 1024
+NB_SHOTS_DEFAULT = 2048
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 3
-NB_CALLS = 6
-NB_IN_IT_RATIO = 0.5
-NB_OPT_VEC = [1,2]
-SAVE_DATA = False
+NB_TRIALS = 15
+NB_CALLS = 150
+NB_IN_IT_RATIO = 0.5002048
+NB_OPT_VEC = [1, 2, 3, 4]
+SAVE_DATA = True
 
 nb_init_vec = []
 nb_iter_vec = []
@@ -46,6 +49,10 @@ inst = qk.aqua.QuantumInstance(simulator,
                                optimization_level=OPTIMIZATION_LEVEL_DEFAULT)
 Batch = ut.Batch(inst)
 np.random.seed(int(time.time()))
+
+
+
+#%% COST PARAMETERS AND OPTIMISER
 # ======================== /
 # Generate ansatz and cost here
 # ======================== /
@@ -70,7 +77,7 @@ df = pd.DataFrame()
 runner_dict = {}
 for trial in range(NB_TRIALS):
     for opt, init, itt in zip(NB_OPT_VEC, nb_init_vec, nb_iter_vec):
-        bo_args['nb_iter'] = itt
+        bo_args['nb_iter'] = itt*opt
         bo_args['initial_design_numdata'] = init
         runner = op.ParallelRunner([cst]*opt, 
                                    op.MethodBO, 
@@ -79,6 +86,8 @@ for trial in range(NB_TRIALS):
                                    method = 'shared')        
         runner_dict[(opt,trial)] = [runner, itt]
 
+
+#%% RUN OPTIMISER
 # ======================== /
 # Init runners
 # ======================== /
@@ -146,28 +155,58 @@ for ct, (opt, trial) in enumerate(runner_dict.keys()):
 # ======================== /
 # Save data
 # ======================== /
+fname = str(cst.__class__).split('cost.')[1].split("'")[0]
+fname = fname + '_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + '.pkl'
 if SAVE_DATA:
-    fname = '3GHZ_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + '.pkl'
     dict_to_dill = {'df':df,
                     'anz':anz,
                     'example_optim':example_optim,
                     'NB_IN_IT_RATIO':NB_IN_IT_RATIO,
-                    'NB_CALLS':NB_CALLS}
+                    'NB_CALLS':NB_CALLS,
+                    'NB_SHOTS_DEFAULT':NB_SHOTS_DEFAULT}
     with open(fname, 'wb') as f:                                                                                                                                                                                                          
         dill.dump(dict_to_dill, f) 
 
 
 
-#%% START HERE IF LOADING FILES
+#%% LOAD / PLOT DATA
 # ========================= / 
-# Files: fname = '3GHZ_120calls_0p45ratio.pkl'
-    
-# ========================= / 
+# Files: 
+#        1 optims         
+#        fname = 'GHZPauliCost_200calls_0p5001024ratio.pkl'
+#        fname = 'GHZPauliCost_200calls_0p50064ratio.pkl'
+#        fname = 'GHZPauliCost_200calls_0p5002048ratio.pkl'
+#
+#        4 optims 
+#        fname = 'GHZPauliCost_150calls_0p50064ratio.pkl'        # 4 optim 15 trials 64 shots/call
+#        fname = 'GHZPauliCost_150calls_0p5001024ratio.pkl'    # 4 optims 15 trial 1024 shots/call
+#        fname = 'GHZPauliCost_150calls_0p5002048ratio.pkl'
+#
+#        fname = 'GHZWitness2Cost_150calls_0p5001024ratio.pkl' 
+#        fname = 'GHZWitness2Cost_150calls_0p5002048ratio.pkl' 
+#        fname = 'GHZWitness2Cost_150calls_0p50064ratio.pkl'
+# ========================= /
+if True: 
+    import copy
+    import dill
+    import time
+    import numpy as np
+    import pandas as pd
+    import qiskit as qk
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    from qcoptim import ansatz as az
+    from qcoptim import cost as cost
+    from qcoptim import utilities as ut
+    from qcoptim import optimisers as op
     with open(fname, 'rb') as f:
         data = dill.load(f)
         df = data['df']
         anz = data['anz']
         example_optim = data['example_optim']
+        NB_CALLS = data['NB_CALLS']
+        NB_SHOTS_DEFAULT = data['NB_SHOTS_DEFAULT']
+        NB_IN_IT_RATIO = data['NB_IN_IT_RATIO']
         NB_TRIALS = df.trial.max() + 1
         NB_OPT_VEC = sorted(df.nb_opt.unique())
         nb_init_vec = sorted(df.nb_init.unique(),reverse=True)
@@ -178,52 +217,84 @@ if SAVE_DATA:
 # ======================== /
 # Plot results
 # ======================== /
-plt.figure()
 sns.set()
+plt.close('all')
+
+f = plt.figure(1, figsize=(10,5))
+axes = f.subplots(1, 3, sharey=True)
 for ii in range(len(df)):
     m = df.iloc[ii]['mean']
     v = df.iloc[ii]['std']
     t = df.iloc[ii]['trial']
     o = df.iloc[ii]['nb_opt']
-    plt.errorbar(o + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
-plt.title('Shot noise: {}'.format(str(fname)))
-plt.xlabel('nb optims')
-plt.ylabel('Cost')
-plt.show()
+    axes[0].errorbar(o + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
+axes[0].set_title('Shot noise ({} shots/circ)'.format(NB_SHOTS_DEFAULT))
+axes[0].set_ylabel('Cost ' + fname)
+axes[0].set_xlabel('nb optimisers')
 
 
-plt.figure()
-sns.pointplot(data = df, x = 'nb_opt', y = 'mean', join=False)
-plt.title('Optimiser noise: {}'.format(str(fname)))
-plt.show()
+
+sns.pointplot(data = df, x = 'nb_opt', y = 'mean', join=False, ax=axes[1])
+axes[1].set_title('Optimiser noise')
+axes[1].set_xlabel('nb optimisers')
+axes[1].set_ylabel('cost')
 
 
-plt.figure()
-sns.boxplot(data = df, x = 'nb_opt', y = 'mean')
-plt.title('Optimiser noise: {}'.format(fname))
-plt.xlabel('nb of optimisers')
-plt.ylabel('Solution')
-plt.show()
+sns.boxplot(data = df, x = 'nb_opt', y = 'mean', ax = axes[2])
+axes[2].set_title('Optimiser noise')
+axes[2].set_xlabel('nb optimisers')
+axes[2].set_ylabel('cost')
+f.show()
 
 
-plt.figure()
-f, axes = plt.subplots(len(NB_OPT_VEC), 1, sharex=True, figsize=(5, 10))
+
+
+f = plt.figure(2, figsize=(5, 11))
+axes = f.subplots(len(NB_OPT_VEC), 1, sharex=True)
 axes = np.atleast_1d(axes)
 for ii, opt in enumerate(NB_OPT_VEC):
     axes[ii].set_title('nb optims: {}'.format(opt))
-    axes[ii].set_ylim(0, 1)
+    #axes[ii].set_ylim(df['mean'].min() - 0.1, df['mean'].max() + 0.1)
 
     if ii == int(len(NB_OPT_VEC) / 2):
-        axes[ii].set_ylabel('1-F')
+        axes[ii].set_ylabel('Cost')
     for trial in range(NB_TRIALS):
         data = np.ravel(example_optim[(opt, trial)].Y)
         iter_data = data[nb_init_vec[ii]:]
+        iter_data = data
         sns.scatterplot(np.arange(1,len(iter_data)+1),  iter_data, ax=axes[ii])
 axes[ii].set_xlabel('iter')
+f.show()
 
 
-if False:
-    for bo in example_optim.values():
-        bo.run_optimization(max_iter = 0, eps = 0) 
-        bo.plot_convergence()
-        plt.show()
+
+
+f = plt.figure(3, figsize=(10, 5))
+axes = f.subplots(1, len(NB_OPT_VEC), sharey=True, squeeze=False)
+axes = np.ravel(axes)
+for opt, trial in example_optim.keys():
+    bo = example_optim[(opt,trial)]
+    x = ut._diff_between_x(bo.X) 
+    sns.lineplot(np.arange(1, len(x) + 1),  x, ax=axes[NB_OPT_VEC.index(opt)]) 
+    axes[NB_OPT_VEC.index(opt)].set_title('nb opt: {}'.format(opt))
+    axes[NB_OPT_VEC.index(opt)].set_xlabel('iter')
+f.show()
+axes[0].set_ylabel('x_{i + 1} - x_{i}')
+[ax.set_xlabel('iter') for ax in axes]
+f.show()
+
+
+
+
+# plt.figure(4)
+# for ii in range(len(df)):
+#     m = df.iloc[ii]['mean'] 
+#     v = df.iloc[ii]['std']
+#     t = df.iloc[ii]['trial']
+#     o = df.iloc[ii]['nb_opt']
+#     plt.plot(o + 0.1*t/NB_TRIALS, np.log10(m), 'b.')
+# plt.ylabel('log10 Cost')
+
+print('NB_SHOTS_DEFAULT: ' + str(NB_SHOTS_DEFAULT))
+print('NB_TRIALS: ' + str(NB_TRIALS))
+print('NB_OPT_VEC: ' + str(NB_OPT_VEC))
