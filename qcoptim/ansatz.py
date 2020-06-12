@@ -32,6 +32,7 @@ __all__ = [
 ]
 
 import abc
+import pdb
 import sys
 import random
 
@@ -346,7 +347,7 @@ class RegularU3Ansatz(BaseAnsatz):
         for r in range(self._depth):
 
             # add parameterised single qubit rotations
-            for q in range(N):
+            for q in range(N):                  
                 qc.u3(*[self._params[param_counter+i] for i in range(3)],q)
                 param_counter += 3
 
@@ -419,6 +420,79 @@ class RegularU2Ansatz(BaseAnsatz):
             param_counter += 2
         
         return qc
+
+
+class RegularRandomU3ParamAnsatz(BaseAnsatz):
+    """ 
+    Regular entangeling gates + random U3 unitaries per layer. Only 1 parameter per u3 unitary
+    is used. 
+
+        
+    """
+    def __init__(self,*args,seed=None):
+        if seed is not None:
+            np.random.seed(seed)
+        super().__init__(*args)
+
+    def _generate_params(self):
+        """ """
+        nb_params = self._nb_qubits*(self._depth+1)*1
+        name_params = ['R'+str(i) for i in range(nb_params)]
+        return [qk.circuit.Parameter(n) for n in name_params]
+
+    def _generate_circuit(self):
+        """ """
+
+        N = self._nb_qubits
+        barriers = True
+        
+        qc = qk.QuantumCircuit(N)
+
+        egate = qc.cx # entangle with CNOTs
+
+        param_counter = 0
+        for r in range(self._depth):
+
+            # add parameterised single qubit rotations
+            for q in range(N):
+                choice = 3*np.random.rand()
+                if choice <= 1:
+                    rot = [self._params[param_counter], 0, 0]
+                elif choice >= 2:
+                    rot = [0, self._params[param_counter], 0]
+                else:
+                    rot = [0, 0, self._params[param_counter]]
+                qc.u3(*rot,q)
+                param_counter += 1
+
+            # add entangling gates
+            l,r = 2*np.arange(N//2),2*np.arange(N//2)+1
+            if len(l)==1:
+                egate(l[0],r[0])
+            elif len(l)>1:
+                egate(l,r)
+            l,r = 2*np.arange(N//2-1+(N%2))+1,2*np.arange(N//2-1+(N%2))+2
+            if len(l)==1:
+                egate(l[0],r[0])
+            elif len(l)>1:
+                egate(l,r)
+            if barriers:
+                qc.barrier()
+
+        # add final round of parameterised single qubit rotations
+        for qu in range(N):
+            choice = 3*np.random.rand()
+            if choice <= 1:
+                rot = [self._params[param_counter], 0, 0]
+            elif choice >= 2:
+                rot = [0, self._params[param_counter], 0]
+            else:
+                rot = [0, 0, self._params[param_counter]]
+            qc.u3(*rot,qu)
+            param_counter += 1
+        
+        return qc
+
 # ------------------------------------------------------------------------------
 def count_params_from_func(ansatz):
     """ Counts the number of parameters that the ansatz function accepts"""
