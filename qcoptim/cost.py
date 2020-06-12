@@ -1048,6 +1048,7 @@ class CrossFidelity(CostInterface):
         comparison_results=None,
         seed=0,
         nb_random=5,
+        subsample_size=None,
         prefix='HaarRandom',
         ):
         """
@@ -1070,6 +1071,11 @@ class CrossFidelity(CostInterface):
             Seed used to generate random unitaries
         nb_random : int, optional
             The number of random unitaries to average over
+        subsample_size : int or None
+            If this is not None, then nb_random becomes the total number
+            of random measurement basis to generate and each time method
+            `bind_params_to_meas` is called it will randomly select this
+            number out of those total circuits to measure this time.
         prefix : string, optional
             String to use to label the measurement circuits generated
         """
@@ -1090,6 +1096,13 @@ class CrossFidelity(CostInterface):
 
         # run setter (see below)
         self.comparison_results = comparison_results
+
+        # setup subsampling
+        self._subsample_size = subsample_size
+        if subsample_size is not None:
+            # use same seed as generating random measurement basis for 
+            # reproducibility
+            self._subsampling_rng = np.random.default_rng(seed)
 
     @property
     def nb_random(self):
@@ -1191,6 +1204,11 @@ class CrossFidelity(CostInterface):
         results : dict
             Results dictionary with the CrossFidelity metadata added
         """
+        # warn if using subsampling
+        if (self._subsample_size is not None) and (not self._subsample_size==self.nb_random):
+            print('Warning. Obj was using subsampling and so these results'
+                +' do not include all nb_random measurement settings.')
+
         # convert results to dict if needed
         if not type(results) is dict:
             results = results.to_dict()
@@ -1204,10 +1222,42 @@ class CrossFidelity(CostInterface):
             })
         return results
 
+    def bind_params_to_meas(self,params):
+        """ 
+        Bind a list of parameters to named measurable circuits of the 
+        cost function 
+        
+        Parameters
+        ----------
+        params: None, or 1d, 2d numpy array
+            If None the function will return the unbound measurement 
+            circuit, else it will bind each parameter to each of the 
+            measurable circuits
+
+        Returns
+        -------
+            quantum circuits
+                The bound or unbound named measurement circuits
+        """
+        params = np.atleast_2d(params)
+
+        # (optionally) select the next subsample of measurement basis
+        if self._subsample_size is not None:
+            # (`replace` kwarg ensures there is no repeated choices)
+            self._last_subsample_set = self._subsampling_rng.choice(
+                self.nb_random, size=self._subsample_size, replace=False)
+            _meas_circuits = [ self._meas_circuits[i] for i in self._last_subsample_set ]
+        else:
+            _meas_circuits = self._meas_circuits
+
+        bound_circuits = []
+        for p in params:
+            bound_circuits += bind_params(_meas_circuits, p, self.qk_vars)
+        return bound_circuits   
+
     def evaluate_cost(
         self,
         results,
-        nb_random=None,
         name='',
         **kwargs
         ):
@@ -1221,10 +1271,6 @@ class CrossFidelity(CostInterface):
         results : Qiskit results type
             Results to calculate cross-fidelity with, against the stored
             results dictionary.
-        nb_random : int, optional
-            The number of random unitaries to use to compute the cost. 
-            This allows subsampling of the full amount of data available
-            in the results.
 
         Returns
         -------
@@ -1245,20 +1291,23 @@ class CrossFidelity(CostInterface):
         # use `get_counts` method
         comparison_results = qk.result.Result.from_dict(self._comparison_results)
 
-        # (optional) use less than the full number of random unitaries available
-        _nb_random = self._nb_random
-        if not nb_random is None:
-            assert (not nb_random>self._nb_random), ("If nb_random is explicitly"
-                +" declared in CrossFidelity.evaluate_cost it cannot be greater"
-                +" than the objects nb_random attribute.")
-            _nb_random = nb_random
+        # setup depending on whether we are subsampling
+        if self._subsample_size is not None:
+            _nb_random = self._subsample_size
+            # assumes this is being called directly after a call to 
+            # `bind_params_to_meas`, which sets `self._last_subsample_set`,
+            # else the `results.get_counts` calls below will likely fail
+            unitaries_set = self._last_subsample_set
+        else:
+            _nb_random = self._nb_random
+            unitaries_set = range(_nb_random)
 
         # iterate over the different random unitaries
         tr_rho1_rho2 = 0.
         tr_rho1squared = 0.
         tr_rho2squared = 0.
         nb_qubits = None
-        for uidx in range(_nb_random):
+        for uidx in unitaries_set:
 
             # try to extract matching experiment data
             try:
