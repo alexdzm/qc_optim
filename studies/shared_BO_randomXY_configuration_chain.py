@@ -29,14 +29,15 @@ from qcoptim import optimisers as op
 pi= np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 10
-NB_CALLS = 180
+NB_TRIALS = 4
+NB_CALLS = 1000
 NB_IN_IT_RATIO = 0.5001024
-NB_SPINS = 7
-NB_DEPTH = 3
+NB_SPINS = 5
+NB_DEPTH = 5
 NB_OPT_VEC = [1]
 SAVE_DATA = True
-NB_ANZ_SEED = 15
+NB_ANZ_SEED = 10
+NB_HAM_SEED = 3
 NB_CONFIGS = 10
 
 nb_init_vec = [round(NB_CALLS * NB_IN_IT_RATIO)]
@@ -54,20 +55,22 @@ np.random.seed(int(time.time()))
 # ======================== /NB_CONFIGS
 # Generate ansatz and cost here
 # ======================== /
-anz = az.RegularRandomU3ParamAnsatz(NB_SPINS, NB_DEPTH, seed = NB_ANZ_SEED)
+anz = az.RandomAnsatz(NB_SPINS, NB_DEPTH, seed = NB_ANZ_SEED)
 cstvec = []
 hvec = []
 h_config = []
-for jj in np.linspace(0, 1, NB_CONFIGS):
+alphaVec = np.logspace(-1, 1, NB_CONFIGS)
+for aa in alphaVec:
     hamiltonian = ut.gen_random_xy_hamiltonian(NB_SPINS,
-                                               U = 0.0,
-                                               J = jj,
-                                               delta = 0.0,
-                                               alpha = 100.0) / NB_SPINS
+                                               U = 0,
+                                               J = 0,
+                                               delta = 1,
+                                               alpha = aa,
+                                               seed = NB_HAM_SEED) / NB_SPINS
     hvec.append(hamiltonian)
     cst = cost.RandomXYCost(anz, inst, hamiltonian)
     cstvec.append(cst)
-    h_config.append(round(jj, 2))
+    h_config.append(round(aa, 2))
 
 # ======================== /
 #  Default BO optim args
@@ -174,9 +177,9 @@ for ct, (opt, trial) in enumerate(runner_dict.keys()):
 # ======================== /
 # Save data
 # ======================== /
-fname = 'Config_' + str(cst.__class__).split('cost.')[1].split("'")[0]
+fname = str(anz.__class__).split('.')[2].split("'")[0] + str(cst.__class__).split('cost.')[1].split("'")[0]
 fname += '_{}qu'.format(NB_SPINS)
-fname = fname + '_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + '.pkl'
+fname = fname + '_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + ut.safe_string.gen() + '.pkl'
 if SAVE_DATA:
     dict_to_dill = {'df':df,
                     'anz':anz,
@@ -185,7 +188,8 @@ if SAVE_DATA:
                     'NB_CALLS':NB_CALLS,
                     'NB_SHOTS_DEFAULT':NB_SHOTS_DEFAULT,
                     'hamiltonian':hamiltonian,
-                    'NB_ANZ_SEED':NB_ANZ_SEED}
+                    'NB_ANZ_SEED':NB_ANZ_SEED,
+                    'NB_HAM_SEED':NB_HAM_SEED}
     with open(fname, 'wb') as f:                                                                                                                                                                                                          
         dill.dump(dict_to_dill, f) 
 
@@ -295,3 +299,19 @@ f.show()
 axes[0].set_ylabel('x_{i + 1} - x_{i}')
 [ax.set_xlabel('iter') for ax in axes]
 f.show()
+
+
+
+# f = plt.figure(10)
+# axes = f.subplots(int(np.sqrt(len(hvec))), int(np.sqrt(len(hvec))), sharey=True, sharex = True, squeeze=False)
+# axes = np.ravel(axes)
+# for ii, h in enumerate(hvec):
+#     pt = int(np.sqrt(len(hvec)))**2
+#     axes[ii%pt].pcolor(np.log(h))
+
+
+# def check_ham_configs(hvec):
+#     for ct, h in enumerate(hvec):
+#         for rr, dat in enumerate(h):
+#             plt.plot(dat[(rr+1):], '.-', label = str(ct))
+# check_ham_configs(hvec)

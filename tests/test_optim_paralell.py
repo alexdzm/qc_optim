@@ -11,10 +11,10 @@ import numpy as np
 import qiskit as qk
 import matplotlib.pyplot as plt
 sys.path.insert(0, '../qcoptim/')
-import ansatz as az
-import cost as cost
-import utilities as ut
-import optimisers as op
+import qcoptim.ansatz as az
+import qcoptim.cost as cost
+import qcoptim.utilities as ut
+import qcoptim.optimisers as op
 
 
 
@@ -23,11 +23,11 @@ import optimisers as op
 # Defaults
 # ===================
 pi= np.pi
-NB_SHOTS_DEFAULT = 2048
+NB_SHOTS_DEFAULT = 1536
 OPTIMIZATION_LEVEL_DEFAULT = 0
 TRANSPILER_SEED_DEFAULT = 10
-NB_INIT = 10
-NB_ITER = 10
+NB_INIT = 120
+NB_ITER = 120
 CHOOSE_DEVICE = True
 
 
@@ -39,27 +39,25 @@ if CHOOSE_DEVICE:
     bem.get_current_status()
     chosen_device = int(input('SELECT IBM DEVICE:'))
     bem.get_backend(chosen_device, inplace=True)
-    inst = bem.gen_instance_from_current(initial_layout=[1,3,2])
+    inst = bem.gen_instance_from_current(initial_layout=[1,3,2],
+                                         nb_shots=NB_SHOTS_DEFAULT,
+                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT)
 
 
 # ===================
 # Generate ansatz and const functins (will generalize this in next update)
 # ===================
 x_sol = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
-anz0 = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx0, x_sol = x_sol)
-anz1 = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx1)
-anz2 = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx2)
-anz3 = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx3)
-anz4 = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx4)
-
-
-cst0 = cost.GHZPauliCost(anz0, inst)
-cst1 = cost.GHZPauliCost(anz1, inst)
-cst2 = cost.GHZPauliCost(anz2, inst)
-cst3 = cost.GHZPauliCost(anz3, inst)
-cst4 = cost.GHZPauliCost(anz4, inst)
-
-cost_list = [cst0, cst1, cst2, cst3, cst4]
+funcs = [az._GHZ_3qubits_6_params_cx0,
+         az._GHZ_3qubits_6_params_cx1,
+         az._GHZ_3qubits_6_params_cx2,
+         az._GHZ_3qubits_6_params_cx3,
+         az._GHZ_3qubits_6_params_cx4,
+         az._GHZ_3qubits_6_params_cx5,
+         az._GHZ_3qubits_6_params_cx6,
+         az._GHZ_3qubits_6_params_cx7]
+anz_vec = [az.AnsatzFromFunction(fun,x_sol=x_sol) for fun in funcs]
+cost_list = [cost.GHZPauliCost(anz, inst, invert=True) for anz in anz_vec]
 
 
 
@@ -67,15 +65,15 @@ cost_list = [cst0, cst1, cst2, cst3, cst4]
 #  Default BO optim args
 # ======================== /
 bo_args = ut.gen_default_argsbo(f=lambda x: .5, 
-                                domain= [(0, 2*np.pi) for i in range(anz0.nb_params)], 
+                                domain= [(0, 2*np.pi) for i in range(anz_vec[0].nb_params)], 
                                 nb_init=NB_INIT,
                                 eval_init=False)
 
 bo_args['nb_iter'] = NB_ITER
-
+bo_args['acquisition_weight'] = 7
 
 spsa_args = {'a':1, 'b':0.628, 's':0.602, 
-             't':0.101,'A':0,'domain':[(0, 2*np.pi) for i in range(anz0.nb_params)],
+             't':0.101,'A':0,'domain':[(0, 2*np.pi) for i in range(anz_vec[0].nb_params)],
              'x_init':None}
 
 # ======================== /
@@ -85,13 +83,13 @@ spsa_args = {'a':1, 'b':0.628, 's':0.602,
 opt_bo = op.MethodBO
 opt_spsa = op.MethodSPSA
 
-bo_args_list = [copy.deepcopy(bo_args) for ii in range(5)]
+bo_args_list = [copy.deepcopy(bo_args) for ii in range(len(cost_list))]
 
 runner1 = op.ParallelRunner(cost_list, 
                             opt_bo, 
                             optimizer_args = bo_args_list,
-                            share_init = False,
-                            method = 'shared')
+                            share_init = True,
+                            method = 'independent')
 
 # runner2 = op.ParallelRunner(cost_list[:2], 
 #                             opt_spsa,
@@ -108,7 +106,7 @@ runner1 = op.ParallelRunner(cost_list,
 
 # single_bo = op.SingleBO(cst0, bo_args)
 
-single_SPSA = op.SingleSPSA(cst0, spsa_args)
+# single_SPSA = op.SingleSPSA(cst0, spsa_args)
 
 runner = runner1
 
@@ -118,7 +116,7 @@ x_new = [[x_sol, x_sol], [x_sol]]
 # Testing circ generation and output formainting
 # ========================= /
 if len(runner.optim_list) == 2:
-    Batch = ut.Batch()
+    Batch = ut.Batch(inst)
     runner.next_evaluation_circuits()
     print(runner.method)
     print(runner._last_x_new)
@@ -131,7 +129,7 @@ if len(runner.optim_list) == 2:
 # # ========================= /
 # # And initilization:
 # ========================= /
-Batch = ut.Batch()
+Batch = ut.Batch(inst)
 runner.next_evaluation_circuits()
 print(len(runner.circs_to_exec))
 Batch.submit_exec_res(runner)
@@ -194,7 +192,7 @@ if False:
         ut.gen_pkl_file(cst, bo, 
                         baseline_values = bl_val, 
                         bopt_values = bo_val, 
-                        info = 'cx' + str(cst.main_circuit.count_ops()['cx']) + '_',
+                        info = 'SWP' + str(cst.main_circuit.depth()) + '_',
                         dict_in = {'bo_args':bo_args,
                                    'x_sol':x_sol})
 
@@ -269,4 +267,78 @@ if False:
 #                     dict_in = {'bo_args':bo_args,
 #                                'x_sol':x_sol})
     
-    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# import qiskit
+# from qiskit import QuantumRegister, QuantumCircuit, ClassicalRegister
+# from qiskit.providers.aer import noise # import AER noise model
+
+# # Measurement error mitigation functions
+# from qiskit.ignis.mitigation.measurement import (complete_meas_cal,
+#                                                  CompleteMeasFitter, 
+#                                                  MeasurementFilter)
+
+# # Generate a noise model for the qubits
+# noise_model = noise.NoiseModel()
+# for qi in range(5):
+#     read_err = noise.errors.readout_error.ReadoutError([[0.75, 0.25],[0.1, 0.9]])
+#     noise_model.add_readout_error(read_err, [qi])
+
+# # Generate the measurement calibration circuits
+# # for running measurement error mitigation
+# qr = QuantumRegister(5)
+# meas_cals, state_labels = complete_meas_cal(qubit_list=[2,3,4], qr=qr)
+
+# # Execute the calibration circuits
+# backend = qiskit.Aer.get_backend('qasm_simulator')
+# job = qiskit.execute(meas_cals, backend=backend, shots=1000, noise_model=noise_model)
+# cal_results = job.result()
+
+# # Make a calibration matrix
+# meas_fitter = CompleteMeasFitter(cal_results, state_labels)
+
+# # Make a 3Q GHZ state
+# cr = ClassicalRegister(3)
+# ghz = QuantumCircuit(qr, cr)
+# ghz.h(qr[2])
+# ghz.cx(qr[2], qr[3])
+# ghz.cx(qr[3], qr[4])
+# ghz.measure(qr[2],cr[0])
+# ghz.measure(qr[3],cr[1])
+# ghz.measure(qr[4],cr[2])
+
+# # Execute the GHZ circuit (with the same noise model)
+# job = qiskit.execute(ghz, backend=backend, shots=1000, noise_model=noise_model)
+# results = job.result()
+
+# # Results without mitigation
+# raw_counts = results.get_counts()
+# print("Results without mitigation:", raw_counts)
+
+# # Create a measurement filter from the calibration matrix
+# meas_filter = meas_fitter.filter
+# # Apply the filter to the raw counts to mitigate 
+# # the measurement errors
+# mitigated_counts = meas_filter.apply(raw_counts)
+# print("Results with mitigation:", {l:int(mitigated_counts[l]) for l in mitigated_counts})

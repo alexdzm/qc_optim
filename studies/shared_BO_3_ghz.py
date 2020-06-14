@@ -5,6 +5,7 @@ Created on Mon Jun 8 09:15:32 2020
 @author: Kiran
 """
 
+# 
 #%% IMPORTS
 
 import copy
@@ -28,12 +29,12 @@ from qcoptim import optimisers as op
 # Defaults and global objects
 # ======================== /
 pi= np.pi
-NB_SHOTS_DEFAULT = 2048
+NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 15
-NB_CALLS = 150
-NB_IN_IT_RATIO = 0.5002048
-NB_OPT_VEC = [1, 2, 3, 4]
+NB_TRIALS = 20
+NB_CALLS = 180
+NB_IN_IT_RATIO = 0.5001024
+NB_OPT_VEC = [1]
 SAVE_DATA = True
 
 nb_init_vec = []
@@ -227,10 +228,20 @@ for ii in range(len(df)):
     v = df.iloc[ii]['std']
     t = df.iloc[ii]['trial']
     o = df.iloc[ii]['nb_opt']
-    axes[0].errorbar(o + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
+    axes[0].errorbar(o + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='t {}'.format(t))
 axes[0].set_title('Shot noise ({} shots/circ)'.format(NB_SHOTS_DEFAULT))
 axes[0].set_ylabel('Cost ' + fname)
 axes[0].set_xlabel('nb optimisers')
+
+
+# plt.figure(4)
+# for ii in range(len(df)):
+#     m = df.iloc[ii]['mean'] 
+#     v = df.iloc[ii]['std']
+#     t = df.iloc[ii]['trial']
+#     o = df.iloc[ii]['nb_opt']
+#     plt.plot(o + 0.1*t/NB_TRIALS, np.log10(m), 'b.')
+# plt.ylabel('log10 Cost')
 
 
 
@@ -261,7 +272,7 @@ for ii, opt in enumerate(NB_OPT_VEC):
     for trial in range(NB_TRIALS):
         data = np.ravel(example_optim[(opt, trial)].Y)
         iter_data = data[nb_init_vec[ii]:]
-        iter_data = data
+        # iter_data = data
         sns.scatterplot(np.arange(1,len(iter_data)+1),  iter_data, ax=axes[ii])
 axes[ii].set_xlabel('iter')
 f.show()

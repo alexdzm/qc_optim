@@ -612,6 +612,75 @@ def _GHZ_3qubits_6_params_cx4(params, barriers = False):
     c.ry(params[5], 2)
     if barriers: c.barrier()
     return c
+
+def _GHZ_3qubits_6_params_cx5(params, barriers = False):
+    """ Returns function handle for 6 param ghz state 5 swaps"""
+    logical_qubits = qk.QuantumRegister(3, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    c.rx(params[0], 0) 
+    c.ry(params[2], 1) 
+    c.rx(params[1], 2) 
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    if barriers: c.barrier()
+    c.cnot(0,2) 
+    c.cnot(1,2) 
+    if barriers: c.barrier()
+    c.rx(params[3], 0)
+    c.rx(params[4], 1)
+    c.ry(params[5], 2)
+    if barriers: c.barrier()
+    return c
+
+def _GHZ_3qubits_6_params_cx6(params, barriers = False):
+    """ Returns function handle for 6 param ghz state 6 swaps"""
+    logical_qubits = qk.QuantumRegister(3, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    c.rx(params[0], 0) # SAME FIXES AS 0 SWAPS
+    c.rx(params[1], 1) 
+    c.ry(params[2], 2) 
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    if barriers: c.barrier()
+    c.cnot(0,2) 
+    c.cnot(1,2) 
+    if barriers: c.barrier()
+    c.rx(params[3], 0)
+    c.rx(params[4], 1)
+    c.ry(params[5], 2)
+    if barriers: c.barrier()
+    return c
+
+def _GHZ_3qubits_6_params_cx7(params, barriers = False):
+    """ Returns function handle for 6 param ghz state 7 swaps"""
+    logical_qubits = qk.QuantumRegister(3, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    c.ry(params[2], 0) 
+    c.rx(params[1], 1) 
+    c.rx(params[0], 2) 
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    if barriers: c.barrier()
+    c.cnot(0,2) 
+    c.cnot(1,2) 
+    if barriers: c.barrier()
+    c.rx(params[3], 0)
+    c.rx(params[4], 1)
+    c.ry(params[5], 2)
+    if barriers: c.barrier()
+    return c
     
 def _GraphCycl_6qubits_6params(params, barriers = False):        
     """ Returns handle to cyc6 cluster state with c-phase gates"""
