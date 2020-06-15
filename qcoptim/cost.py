@@ -111,6 +111,10 @@ class CostInterface(metaclass=abc.ABCMeta):
             sum_cost.evaluate_cost = (
                 lambda x,**kwargs : tmp_1.evaluate_cost(x,**kwargs) + tmp_2.evaluate_cost(x,**kwargs)
                 )
+            sum_cost.bind_params_to_meas = (
+                lambda *args,**kwargs : tmp_1.bind_params_to_meas(*args,**kwargs) 
+                                        + tmp_2.bind_params_to_meas(*args,**kwargs)
+                )
             return sum_cost
 
         elif (isinstance(other, (int, float, complex)) and not isinstance(other, bool)):
@@ -168,7 +172,7 @@ class CostInterface(metaclass=abc.ABCMeta):
             TODO: extend to allow list of names"""
         raise NotImplementedError
     
-    def bind_params_to_meas(self, params = None, params_names = None):
+    def bind_params_to_meas(self,params=None,params_names=None):
         """ 
         Bind a list of parameters to named measurable circuits of the cost function 
         
@@ -1222,7 +1226,7 @@ class CrossFidelity(CostInterface):
             })
         return results
 
-    def bind_params_to_meas(self,params):
+    def bind_params_to_meas(self,params=None,params_names=None):
         """ 
         Bind a list of parameters to named measurable circuits of the 
         cost function 
@@ -1239,20 +1243,29 @@ class CrossFidelity(CostInterface):
             quantum circuits
                 The bound or unbound named measurement circuits
         """
-        params = np.atleast_2d(params)
-
-        # (optionally) select the next subsample of measurement basis
-        if self._subsample_size is not None:
-            # (`replace` kwarg ensures there is no repeated choices)
-            self._last_subsample_set = self._subsampling_rng.choice(
-                self.nb_random, size=self._subsample_size, replace=False)
-            _meas_circuits = [ self._meas_circuits[i] for i in self._last_subsample_set ]
+        if params is None:
+            bound_circuits = self._meas_circuits[:self._subsample_size]
         else:
-            _meas_circuits = self._meas_circuits
+            params = np.atleast_2d(params)
+            if type(params_names) == str:
+                params_names = [params_names]
+            if params_names is None: 
+                params_names = [None] * len(params)
+            else:
+                assert len(params_names) == len(params)
 
-        bound_circuits = []
-        for p in params:
-            bound_circuits += bind_params(_meas_circuits, p, self.qk_vars)
+            # (optionally) select the next subsample of measurement basis
+            if self._subsample_size is not None:
+                # (`replace` kwarg ensures there is no repeated choices)
+                self._last_subsample_set = self._subsampling_rng.choice(
+                    self.nb_random, size=self._subsample_size, replace=False)
+                _meas_circuits = [ self._meas_circuits[i] for i in self._last_subsample_set ]
+            else:
+                _meas_circuits = self._meas_circuits
+
+            bound_circuits = []
+            for p, pn in zip(params, params_names):
+                bound_circuits += bind_params(_meas_circuits, p, self.qk_vars, pn)
         return bound_circuits   
 
     def evaluate_cost(
@@ -1265,6 +1278,17 @@ class CrossFidelity(CostInterface):
         Calculates the cross-fidelity using two sets of qiskit results. 
         The variable names are chosen to match arxiv:1909.01282 as close
         as possible.
+
+        NOTE: when subsampling we would ideally keep track of the circs
+        that were submitted to the `execute` call and then extract those
+        results elements e.g. using a `_last_subsample_set` variable. But
+        because of the way we use the Cost obj for information sharing 
+        this might not always be possible. We offer a fallback strategy of
+        iterating over the full set of nb_random circuits and try...except
+        to see if they are in the Results obj. In this case the _nb_random
+        used in the statistics is determined dynamically. As a weak check,
+        this approach fails if the number of results founds in the obj is
+        less than `self._subsample_size`.
 
         Parameters
         ----------
@@ -1294,10 +1318,15 @@ class CrossFidelity(CostInterface):
         # setup depending on whether we are subsampling
         if self._subsample_size is not None:
             _nb_random = self._subsample_size
-            # assumes this is being called directly after a call to 
-            # `bind_params_to_meas`, which sets `self._last_subsample_set`,
-            # else the `results.get_counts` calls below will likely fail
-            unitaries_set = self._last_subsample_set
+            try:
+                # assumes this is being called directly after a call to 
+                # `bind_params_to_meas`, which sets `self._last_subsample_set`,
+                # else the `results.get_counts` calls below will likely fail
+                unitaries_set = self._last_subsample_set
+            except AttributeError:
+                # see 'NOTE' in docstring above
+                _nb_random = self._nb_random
+                unitaries_set = range(_nb_random)
         else:
             _nb_random = self._nb_random
             unitaries_set = range(_nb_random)
@@ -1314,9 +1343,17 @@ class CrossFidelity(CostInterface):
                 countsdict_1_fixedU = results.get_counts(name+self._prefix+str(uidx))
                 countsdict_2_fixedU = comparison_results.get_counts(self._prefix+str(uidx))
             except QiskitError:
-                print('Cannot extract matching experiment data to calculate cross-fidelity.',
-                    file=sys.stderr)
-                raise
+                if self._subsample_size is None:
+                    print('Cannot extract matching experiment data to calculate cross-fidelity.',
+                        file=sys.stderr)
+                    raise
+                else:
+                    _nb_random -= 1
+                    if _nb_random<self._subsample_size:
+                        print('Cannot extract matching experiment data to calculate cross-fidelity.',
+                            file=sys.stderr)
+                        raise
+                    continue
 
             # normalise counts dict to give empirical probability dists
             P_1_fixedU = { k:v/sum(countsdict_1_fixedU.values()) for k,v in countsdict_1_fixedU.items() }
