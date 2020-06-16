@@ -554,7 +554,10 @@ class Results():
                   Add log2phys mapping if avaliable"""
         circ = self.data['ansatz']
         depth = self.data['depth']
-        meta = self.data['meta'][0]
+        try:
+            meta = self.data['meta'][0]
+        except:
+            meta = {'backend_name':'device'}
         fig, ax = plt.subplots(1,1)
         circ.draw(output='mpl',ax=ax,scale=0.4, idle_wires=False)
         plt.title('Backend: {} \n Circuit depths = {} \pm {}'.format(meta['backend_name'], np.mean(depth), np.std(depth)))

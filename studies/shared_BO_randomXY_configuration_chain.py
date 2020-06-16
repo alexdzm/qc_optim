@@ -32,13 +32,14 @@ OPTIMIZATION_LEVEL_DEFAULT = 0
 NB_TRIALS = 4
 NB_CALLS = 1000
 NB_IN_IT_RATIO = 0.5001024
-NB_SPINS = 5
-NB_DEPTH = 5
-NB_OPT_VEC = [1]
+NB_SPINS = 4
+NB_DEPTH = 4
+NB_OPT_VEC = [1,2,3]
 SAVE_DATA = True
 NB_ANZ_SEED = 10
 NB_HAM_SEED = 3
 NB_CONFIGS = 10
+
 
 nb_init_vec = [round(NB_CALLS * NB_IN_IT_RATIO)]
 nb_iter_vec = [round(NB_CALLS * (1 - NB_IN_IT_RATIO) / NB_CONFIGS)]
@@ -88,7 +89,7 @@ df = pd.DataFrame()
 runner_dict = {}
 for trial in range(NB_TRIALS):
     for opt, init, itt in zip(NB_OPT_VEC, nb_init_vec, nb_iter_vec):
-        bo_args['nb_iter'] = itt*len(h_config)
+        bo_args['nb_iter'] = itt*len(h_config) + init
         bo_args['initial_design_numdata'] = init
         runner = op.ParallelRunner(cstvec*opt, 
                                    op.MethodBO, 

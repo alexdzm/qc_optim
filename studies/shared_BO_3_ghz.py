@@ -31,11 +31,11 @@ from qcoptim import optimisers as op
 pi= np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 20
-NB_CALLS = 180
+NB_TRIALS = 2
+NB_CALLS = 300
 NB_IN_IT_RATIO = 0.5001024
-NB_OPT_VEC = [1]
-SAVE_DATA = True
+NB_OPT_VEC = [1,2]
+SAVE_DATA = False
 
 nb_init_vec = []
 nb_iter_vec = []
@@ -43,6 +43,8 @@ for opt in NB_OPT_VEC:
     nb_init_vec.append(round((NB_CALLS * NB_IN_IT_RATIO) / opt))
     nb_iter_vec.append(round((NB_CALLS * (1 - NB_IN_IT_RATIO)) / opt))
     print(opt * (nb_init_vec[-1] + nb_iter_vec[-1]))
+# for ii in range(1,len(NB_OPT_VEC)):
+#     nb_init_vec[ii] = nb_init_vec[0] - 2*ii
 
 simulator = qk.Aer.get_backend('qasm_simulator')
 inst = qk.aqua.QuantumInstance(simulator,
@@ -58,7 +60,14 @@ np.random.seed(int(time.time()))
 # Generate ansatz and cost here
 # ======================== /
 x_sol = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
-anz = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx0, x_sol = x_sol)
+anz_hard = az.AnsatzFromFunction(az._GraphCycl_6qubits_24params)
+anz_medi = az.AnsatzFromFunction(az._GraphCycl_6qubits_12params)
+anz_easy = az.AnsatzFromFunction(az._GraphCycl_6qubits_6params)
+anz_rand = az.RandomAnsatz(6, 2)
+
+anz_ghz = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx0)
+
+anz = anz_ghz
 cst = cost.GHZPauliCost(anz, inst, invert = True)
 
 
@@ -74,16 +83,16 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
 # ======================== /
 # Create runners
 # ======================== /
-df = pd.DataFrame()
+# df = pd.DataFrame()
 runner_dict = {}
 for trial in range(NB_TRIALS):
     for opt, init, itt in zip(NB_OPT_VEC, nb_init_vec, nb_iter_vec):
-        bo_args['nb_iter'] = itt*opt
+        bo_args['nb_iter'] = itt*opt + init
         bo_args['initial_design_numdata'] = init
         runner = op.ParallelRunner([cst]*opt, 
                                    op.MethodBO, 
                                    optimizer_args = bo_args,
-                                   share_init = False,
+                                   share_init = True,
                                    method = 'shared')        
         runner_dict[(opt,trial)] = [runner, itt]
 
@@ -186,8 +195,16 @@ if SAVE_DATA:
 #        fname = 'GHZWitness2Cost_150calls_0p5001024ratio.pkl' 
 #        fname = 'GHZWitness2Cost_150calls_0p5002048ratio.pkl' 
 #        fname = 'GHZWitness2Cost_150calls_0p50064ratio.pkl'
+# 
+#         1 optims 
+#         fname = 'GHZPauliCost_180calls_0p500128ratio.pkl'
+#         fname = 'GHZPauliCost_180calls_0p5001024ratio.pkl'
+#         fname = 'GHZPauliCost_180calls_0p5002048ratio.pkl'
+#
+#         1 optim, proper update weights
+#         fname = 'GHZPauliCost_100calls_0p5002048ratio.pkl'
 # ========================= /
-if True: 
+if SAVE_DATA: 
     import copy
     import dill
     import time

@@ -23,12 +23,15 @@ import qcoptim.optimisers as op
 # Defaults
 # ===================
 pi= np.pi
-NB_SHOTS_DEFAULT = 1536
+NB_SHOTS_DEFAULT = 2048
 OPTIMIZATION_LEVEL_DEFAULT = 0
 TRANSPILER_SEED_DEFAULT = 10
-NB_INIT = 120
-NB_ITER = 120
+NB_INIT = 50
+NB_ITER = 50
+NB_SWAPS = 0
+NB_DELTA = pi/4
 CHOOSE_DEVICE = True
+SAVE_DATA = True
 
 
 # ===================
@@ -58,19 +61,21 @@ funcs = [az._GHZ_3qubits_6_params_cx0,
          az._GHZ_3qubits_6_params_cx7]
 anz_vec = [az.AnsatzFromFunction(fun,x_sol=x_sol) for fun in funcs]
 cost_list = [cost.GHZPauliCost(anz, inst, invert=True) for anz in anz_vec]
-
-
+nb_params = anz_vec[0].nb_params
+cost_list = np.atleast_1d(cost_list[NB_SWAPS])
 
 # ======================== /
 #  Default BO optim args
 # ======================== /
+domain = [x_sol - NB_DELTA*np.ones(nb_params), x_sol +  NB_DELTA*np.ones(nb_params)]
+domain = np.array(domain).transpose()
 bo_args = ut.gen_default_argsbo(f=lambda x: .5, 
-                                domain= [(0, 2*np.pi) for i in range(anz_vec[0].nb_params)], 
+                                domain=domain, 
                                 nb_init=NB_INIT,
                                 eval_init=False)
 
-bo_args['nb_iter'] = NB_ITER
-bo_args['acquisition_weight'] = 7
+bo_args['nb_iter'] = NB_ITER + NB_INIT
+bo_args['acquisition_weight'] = 5
 
 spsa_args = {'a':1, 'b':0.628, 's':0.602, 
              't':0.101,'A':0,'domain':[(0, 2*np.pi) for i in range(anz_vec[0].nb_params)],
@@ -182,7 +187,7 @@ bopt_lines = runner._results_from_last_x()
 # ======================== /
 # Save BO's in different files
 # ======================== /
-if False:
+if SAVE_DATA:
     for cst, bo, bl_val, bo_val in zip(runner.cost_objs,
                                        runner.optim_list,
                                        baselines,

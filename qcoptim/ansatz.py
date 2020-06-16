@@ -703,6 +703,27 @@ def _GraphCycl_6qubits_6params(params, barriers = False):
     if barriers: c.barrier()
     return c
 
+def _GraphCycl_6qubits_12params(params, barriers = False):        
+    """ Returns handle to cyc6 cluster state with c-phase gates"""
+    logical_qubits = qk.QuantumRegister(6, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    c.u2(params[0],params[1],0)
+    c.u2(params[2],params[3],1)
+    c.u2(params[4],params[5],2)
+    c.u2(params[6],params[7],3)
+    c.u2(params[8],params[9],4)
+    c.u2(params[10],params[11],5)
+    if barriers: c.barrier()
+    c.cz(0,1)
+    c.cz(2,3)
+    c.cz(4,5)
+    if barriers: c.barrier()
+    c.cz(1,2)
+    c.cz(3,4)
+    c.cz(5,0)
+    if barriers: c.barrier()
+    return c
+
 def _GraphCycl_6qubits_6params_inefficient(params, barriers = False):        
     """ Returns handle to cyc6 cluster state with cry() gates"""
     logical_qubits = qk.QuantumRegister(6, 'logicals')
