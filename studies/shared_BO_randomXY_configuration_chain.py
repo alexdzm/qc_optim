@@ -29,16 +29,16 @@ from qcoptim import optimisers as op
 pi= np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 4
-NB_CALLS = 1000
+NB_TRIALS = 1
+NB_CALLS = 2000
 NB_IN_IT_RATIO = 0.5001024
 NB_SPINS = 4
-NB_DEPTH = 4
-NB_OPT_VEC = [1,2,3]
+NB_DEPTH = 3
+NB_OPT_VEC = [1]
 SAVE_DATA = True
 NB_ANZ_SEED = 10
 NB_HAM_SEED = 3
-NB_CONFIGS = 10
+NB_CONFIGS = 15
 
 
 nb_init_vec = [round(NB_CALLS * NB_IN_IT_RATIO)]
@@ -106,9 +106,10 @@ for trial in range(NB_TRIALS):
 print('Init runners')
 t = time.time()
 Batch = ut.Batch(inst)
-for run, _ in runner_dict.values():
+for run, itt in runner_dict.values():
     run.next_evaluation_circuits()
     Batch.submit(run)
+    print(itt)
 temp = len(Batch.circ_list)
 Batch.execute()
 
@@ -139,7 +140,6 @@ for ii in range(max(nb_iter_vec)):
             Batch.result(run)
             run.update()
     print('iter: {} of {} took {} s for {} circuits'.format(ii+1, max(nb_iter_vec), round(time.time() - t), temp))
-    np.random.seed(int(time.time()))
 
 
 
@@ -200,8 +200,10 @@ if SAVE_DATA:
 
 #%% LOAD / PLOT DATA
 # ========================= / 
-# Files:    10 configs  10 trials
-#           fname = 'RandomXYCost_7qubits_150calls_0p93001024ratio.pkl'
+# Files:    diff configs  1 trial 4 qubits 1000 calls
+#           fname = 'RandomAnsatz_5CONF_RandomXYCost_4qu_1000calls_0p5001024ratioIn6.pkl'
+#           fname = 'RandomAnsatz_10CONF_RandomXYCost_4qu_1000calls_0p5001024ratiofHg.pkl'
+#           fname = 'RandomAnsatz_15CONF_RandomXYCost_4qu_1000calls_0p5001024ratioWip.pkl'
 # ========================= /
 if SAVE_DATA:
     import copy
@@ -236,7 +238,6 @@ if SAVE_DATA:
 # ======================== /
 sns.set()
 plt.close('all')
-
 f = plt.figure(1, figsize=(10,5))
 axes = f.subplots(1, 3, sharey=True)
 for ii in range(len(df)):
@@ -247,9 +248,11 @@ for ii in range(len(df)):
     h = df.iloc[ii]['h_config']
     h = df.h_config.unique().tolist().index(h)
     axes[0].errorbar(h + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
+axes[0].plot([-0.88223511, -0.85469458, -0.83206065, -0.82616974, -0.83419339, -0.85555687, -0.89058293, -0.92913224, -0.95236189, -0.95812539])
 axes[0].set_title('Shot noise ({} shots/circ)'.format(NB_SHOTS_DEFAULT))
 axes[0].set_ylabel('Cost ' + fname)
 axes[0].set_xlabel('h_config')
+axes[0].set_ylim(-0.96, -0.6)
 
 
 
