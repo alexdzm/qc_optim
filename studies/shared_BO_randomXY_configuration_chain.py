@@ -30,15 +30,15 @@ pi= np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
 NB_TRIALS = 1
-NB_CALLS = 2000
-NB_IN_IT_RATIO = 0.5001024
-NB_SPINS = 4
+NB_CALLS = 1500
+NB_IN_IT_RATIO = 0.3301024
+NB_SPINS = 6
 NB_DEPTH = 3
 NB_OPT_VEC = [1]
 SAVE_DATA = True
 NB_ANZ_SEED = 10
 NB_HAM_SEED = 3
-NB_CONFIGS = 15
+NB_CONFIGS = 10
 
 
 nb_init_vec = [round(NB_CALLS * NB_IN_IT_RATIO)]
@@ -204,6 +204,9 @@ if SAVE_DATA:
 #           fname = 'RandomAnsatz_5CONF_RandomXYCost_4qu_1000calls_0p5001024ratioIn6.pkl'
 #           fname = 'RandomAnsatz_10CONF_RandomXYCost_4qu_1000calls_0p5001024ratiofHg.pkl'
 #           fname = 'RandomAnsatz_15CONF_RandomXYCost_4qu_1000calls_0p5001024ratioWip.pkl'
+
+#           fname = 'RandomAnsatz_15CONF_RandomXYCost_4qu_1500calls_0p5001024ratiocm1.pkl'
+#           fname = 'RandomAnsatzRandomXYCost_4qu_1500calls_0p5001024ratioZ0S.pkl''
 # ========================= /
 if SAVE_DATA:
     import copy
@@ -248,11 +251,11 @@ for ii in range(len(df)):
     h = df.iloc[ii]['h_config']
     h = df.h_config.unique().tolist().index(h)
     axes[0].errorbar(h + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
-axes[0].plot([-0.88223511, -0.85469458, -0.83206065, -0.82616974, -0.83419339, -0.85555687, -0.89058293, -0.92913224, -0.95236189, -0.95812539])
+# axes[0].plot([-0.88223511, -0.85469458, -0.83206065, -0.82616974, -0.83419339, -0.85555687, -0.89058293, -0.92913224, -0.95236189, -0.95812539])
 axes[0].set_title('Shot noise ({} shots/circ)'.format(NB_SHOTS_DEFAULT))
 axes[0].set_ylabel('Cost ' + fname)
 axes[0].set_xlabel('h_config')
-axes[0].set_ylim(-0.96, -0.6)
+# axes[0].set_ylim(-0.96, -0.6)
 
 
 
