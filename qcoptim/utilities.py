@@ -704,7 +704,7 @@ def get_H2_data(dist):
     """
     # I have experienced some crashes
     from qiskit.chemistry import QiskitChemistryError
-    _retries = 10
+    _retries = 50
     for i in range(_retries):
         try:
             driver = PySCFDriver(atom="H .0 .0 .0; H .0 .0 " + str(dist), 
@@ -723,7 +723,10 @@ def get_H2_data(dist):
             shift = repulsion_energy
             break
         except QiskitChemistryError:
+            if i==(_retries-1):
+                raise
             pass
+
 
     return qubitOp, shift
 
@@ -761,7 +764,7 @@ def get_LiH_data(dist):
     """
     # I have experienced some crashes
     from qiskit.chemistry import QiskitChemistryError
-    _retries = 10
+    _retries = 50
     for i in range(_retries):
         try:
             driver = PySCFDriver(atom="Li .0 .0 .0; H .0 .0 " + str(dist), 
@@ -793,6 +796,8 @@ def get_LiH_data(dist):
             shift = repulsion_energy + energy_shift
             break
         except QiskitChemistryError:
+            if i==(_retries-1):
+                raise
             pass
 
     return qubitOp, shift
