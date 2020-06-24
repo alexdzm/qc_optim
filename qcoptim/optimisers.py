@@ -443,7 +443,7 @@ class ParallelRunner():
         
         # unused currently
         # self.optimizer = optimizer
-        # self.optimizer_args = optimizer_args
+        self.optimizer_args = optimizer_args
 
     
     def _gen_optim_list(self, optimizer, optimizer_args):

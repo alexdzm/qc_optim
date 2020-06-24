@@ -31,7 +31,7 @@ NB_ITER = 50
 NB_SWAPS = 0
 NB_DELTA = pi/4
 CHOOSE_DEVICE = True
-SAVE_DATA = True
+SAVE_DATA = False
 
 
 # ===================
@@ -44,7 +44,8 @@ if CHOOSE_DEVICE:
     bem.get_backend(chosen_device, inplace=True)
     inst = bem.gen_instance_from_current(initial_layout=[1,3,2],
                                          nb_shots=NB_SHOTS_DEFAULT,
-                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT)
+                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT,
+                                         measurement_error_mitigation_cls=qk.ignis.mitigation.measurement.CompleteMeasFitter)
 
 
 # ===================
@@ -60,7 +61,7 @@ funcs = [az._GHZ_3qubits_6_params_cx0,
          az._GHZ_3qubits_6_params_cx6,
          az._GHZ_3qubits_6_params_cx7]
 anz_vec = [az.AnsatzFromFunction(fun,x_sol=x_sol) for fun in funcs]
-cost_list = [cost.GHZPauliCost(anz, inst, invert=True) for anz in anz_vec]
+cost_list = [cost.GHZPauliCost3qubits(anz, inst, invert=True) for anz in anz_vec]
 nb_params = anz_vec[0].nb_params
 cost_list = np.atleast_1d(cost_list[NB_SWAPS])
 
@@ -137,7 +138,9 @@ if len(runner.optim_list) == 2:
 Batch = ut.Batch(inst)
 runner.next_evaluation_circuits()
 print(len(runner.circs_to_exec))
-Batch.submit_exec_res(runner)
+Batch.submit(runner)
+Batch.execute()
+Batch.result(runner)
 runner.init_optimisers()
 
 # optimizers now have new init info. 
@@ -301,8 +304,9 @@ if SAVE_DATA:
 
 # # Measurement error mitigation functions
 # from qiskit.ignis.mitigation.measurement import (complete_meas_cal,
-#                                                  CompleteMeasFitter, 
-#                                                  MeasurementFilter)
+#                                                   CompleteMeasFitter, 
+#                                                   MeasurementFilter)
+# simulator = bem.current_backend
 
 # # Generate a noise model for the qubits
 # noise_model = noise.NoiseModel()
@@ -337,9 +341,24 @@ if SAVE_DATA:
 # job = qiskit.execute(ghz, backend=backend, shots=1000, noise_model=noise_model)
 # results = job.result()
 
+
+# noise_model_ghz = noise.NoiseModel()
+# for qi in range(3):
+#     read_err = noise.errors.readout_error.ReadoutError([[0.75, 0.25],[0.1, 0.9]])
+#     noise_model_ghz.add_readout_error(read_err, [qi])
+# inst_corr = qk.aqua.quantum_instance.QuantumInstance(simulator, 
+#                                                 measurement_error_mitigation_cls=CompleteMeasFitter,
+#                                                 shots=1000,
+#                                                 noise_model=noise_model_ghz)
+# res_corr = inst_corr.execute(ghz)
+
 # # Results without mitigation
 # raw_counts = results.get_counts()
 # print("Results without mitigation:", raw_counts)
+
+# raw_corr_counts = res_corr.get_counts()
+# print("Results with miticatin in inst:",raw_corr_counts)
+
 
 # # Create a measurement filter from the calibration matrix
 # meas_filter = meas_fitter.filter
