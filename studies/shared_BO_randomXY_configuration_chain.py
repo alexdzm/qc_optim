@@ -30,10 +30,10 @@ pi = np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
 NB_TRIALS = 1
-NB_CALLS = 1000
+NB_CALLS = 3000
 NB_IN_IT_RATIO = 0.5001024
 NB_SPINS = 6
-NB_DEPTH = 3
+NB_DEPTH = 4
 NB_OPT_VEC = [1]
 SAVE_DATA = False
 NB_ANZ_SEED = 10
@@ -56,7 +56,7 @@ np.random.seed(int(time.time()))
 # ======================== /NB_CONFIGS
 # Generate ansatz and cost here
 # ======================== /
-anz = az.RegularXYZAnsatz(NB_SPINS, NB_DEPTH, seed = NB_ANZ_SEED)
+anz = az.RegularRandomXYZAnsatz(NB_SPINS, NB_DEPTH, seed = NB_ANZ_SEED)
 cstvec = []
 hvec = []
 h_config = []
@@ -108,7 +108,9 @@ t = time.time()
 Batch = ut.Batch(inst)
 for run, itt in runner_dict.values():
     bo_args = run.optimizer_args
-    x_init = ut.gen_params_on_subspace(bo_args, nb_ignore_ratio=0.8)
+    x_init = ut.gen_params_on_subspace(bo_args, 
+                                       nb_ignore=12,
+                                       nb_ignore_ratio=0.8)
     run._gen_circuits_from_params([x_init], inplace=True)
     Batch.submit(run)
     print(itt)
