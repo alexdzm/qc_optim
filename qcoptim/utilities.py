@@ -963,8 +963,8 @@ def gen_params_on_subspace(bo_args,
     init_total = bo_args['initial_design_numdata']
     init_subspace = int(nb_ignore_ratio * init_total)
     init_fullspace = init_total - init_subspace
-    zeros = [[0]*zz + list(np.random.rand(ii)) for _ in range(init_subspace)]
-    full = [list(np.random.rand(ii + zz)) for _ in range(init_fullspace)]
+    zeros = [[0]*zz + list(2*pi*np.random.rand(ii)) for _ in range(init_subspace)]
+    full = [list(2*pi*np.random.rand(ii + zz)) for _ in range(init_fullspace)]
     return zeros + full
 
 

@@ -16,7 +16,10 @@ import qcoptim.cost as cost
 import qcoptim.utilities as ut
 import qcoptim.optimisers as op
 
-
+def add_reduced_domain(params, delta, domain):
+    domain = list(domain)
+    reduced = [[-delta, delta]]*params
+    return np.array(domain+reduced)
 
 
 # ===================
@@ -28,7 +31,7 @@ OPTIMIZATION_LEVEL_DEFAULT = 0
 TRANSPILER_SEED_DEFAULT = 10
 NB_INIT = 50
 NB_ITER = 50
-NB_SWAPS = 0
+NB_SWAPS = -1
 NB_DELTA = pi/4
 CHOOSE_DEVICE = True
 SAVE_DATA = False
@@ -44,8 +47,8 @@ if CHOOSE_DEVICE:
     bem.get_backend(chosen_device, inplace=True)
     inst = bem.gen_instance_from_current(initial_layout=[1,3,2],
                                          nb_shots=NB_SHOTS_DEFAULT,
-                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT,
-                                         measurement_error_mitigation_cls=qk.ignis.mitigation.measurement.CompleteMeasFitter)
+                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT)
+                                         #measurement_error_mitigation_cls=qk.ignis.mitigation.measurement.CompleteMeasFitter)
 
 
 # ===================
@@ -59,17 +62,22 @@ funcs = [az._GHZ_3qubits_6_params_cx0,
          az._GHZ_3qubits_6_params_cx4,
          az._GHZ_3qubits_6_params_cx5,
          az._GHZ_3qubits_6_params_cx6,
-         az._GHZ_3qubits_6_params_cx7]
-anz_vec = [az.AnsatzFromFunction(fun,x_sol=x_sol) for fun in funcs]
+         az._GHZ_3qubits_6_params_cx7,
+         az._GHZ_3qubits_cx7_u3_correction]
+anz_vec = [az.AnsatzFromFunction(fun) for fun in funcs]
 cost_list = [cost.GHZPauliCost3qubits(anz, inst, invert=True) for anz in anz_vec]
 nb_params = anz_vec[0].nb_params
 cost_list = np.atleast_1d(cost_list[NB_SWAPS])
+
 
 # ======================== /
 #  Default BO optim args
 # ======================== /
 domain = [x_sol - NB_DELTA*np.ones(nb_params), x_sol +  NB_DELTA*np.ones(nb_params)]
 domain = np.array(domain).transpose()
+if NB_SWAPS == -1:
+    domain = add_reduced_domain(6, 0.1, domain)
+    x_sol = list(x_sol) + [0]*6
 bo_args = ut.gen_default_argsbo(f=lambda x: .5, 
                                 domain=domain, 
                                 nb_init=NB_INIT,

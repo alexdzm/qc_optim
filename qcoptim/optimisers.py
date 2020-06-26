@@ -340,6 +340,8 @@ class MethodSPSA(Method):
             self._x.append(self._best_x)
             self._updated = True
             self._iter += 1
+        else:
+            raise IndexError("update X vector must be <= len 2")
 
 class ParallelRunner():
     """ 

@@ -29,16 +29,16 @@ from qcoptim import optimisers as op
 pi = np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 1
-NB_CALLS = 3000
+NB_TRIALS = 5
+NB_CALLS = 500
 NB_IN_IT_RATIO = 0.5001024
 NB_SPINS = 6
-NB_DEPTH = 4
+NB_DEPTH = 1
 NB_OPT_VEC = [1]
-SAVE_DATA = False
+SAVE_DATA = True
 NB_ANZ_SEED = 10
 NB_HAM_SEED = 3
-NB_CONFIGS = 4
+NB_CONFIGS = 1
 
 
 nb_init_vec = [round(NB_CALLS * NB_IN_IT_RATIO)]
@@ -56,11 +56,17 @@ np.random.seed(int(time.time()))
 # ======================== /NB_CONFIGS
 # Generate ansatz and cost here
 # ======================== /
-anz = az.RegularRandomXYZAnsatz(NB_SPINS, NB_DEPTH, seed = NB_ANZ_SEED)
+anz = az.RegularU2Ansatz(NB_SPINS, 
+                         NB_DEPTH, 
+                         seed = NB_ANZ_SEED,
+                         cyclic = True)
 cstvec = []
 hvec = []
 h_config = []
-alphaVec = np.logspace(0, 1, NB_CONFIGS)
+if NB_CONFIGS > 1:
+    alphaVec = np.logspace(0, 1, NB_CONFIGS)
+else:
+    alphaVec = [10]
 for aa in alphaVec:
     hamiltonian = ut.gen_random_xy_hamiltonian(NB_SPINS,
                                                U = 0,
@@ -80,7 +86,7 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
                                 domain= [(0, 2*np.pi) for i in range(anz.nb_params)], 
                                 nb_init=0,
                                 eval_init=False)
-
+bo_args['acquisition_weight'] = 20
 
 # ======================== /
 # Create runners
@@ -110,7 +116,7 @@ for run, itt in runner_dict.values():
     bo_args = run.optimizer_args
     x_init = ut.gen_params_on_subspace(bo_args, 
                                        nb_ignore=12,
-                                       nb_ignore_ratio=0.8)
+                                       nb_ignore_ratio=0.0)
     run._gen_circuits_from_params([x_init], inplace=True)
     Batch.submit(run)
     print(itt)

@@ -375,6 +375,11 @@ class RegularU3Ansatz(BaseAnsatz):
 
 class RegularU2Ansatz(BaseAnsatz):
     """ """
+    def __init__(self,*args,seed=None, cyclic=False):
+        if seed is not None:
+            np.random.seed(seed)
+        self._cyclic = cyclic
+        super().__init__(*args)
 
     def _generate_params(self):
         """ """
@@ -412,6 +417,8 @@ class RegularU2Ansatz(BaseAnsatz):
                 egate(l[0],r[0])
             elif len(l)>1:
                 egate(l,r)
+            if self._cyclic:
+                egate(0, self._nb_qubits-1)
             if barriers:
                 qc.barrier()
 
@@ -502,9 +509,10 @@ class RegularRandomXYZAnsatz(BaseAnsatz):
 
         
     """
-    def __init__(self,*args,seed=None):
+    def __init__(self,*args,seed=None, cyclic=False):
         if seed is not None:
             np.random.seed(seed)
+        self._cyclic = cyclic
         super().__init__(*args)
 
     def _generate_params(self):
@@ -548,6 +556,8 @@ class RegularRandomXYZAnsatz(BaseAnsatz):
                 egate(l[0],r[0])
             elif len(l)>1:
                 egate(l,r)
+            if self._cyclic:
+                egate(0, self._nb_qubits-1)
             if barriers:
                 qc.barrier()
 
@@ -572,7 +582,7 @@ def count_params_from_func(ansatz):
         try:
             ansatz(call_list)
             return len(call_list)
-        except IndexError:
+        except:
             call_list += [0]
     
 # ----------------------------------------
@@ -751,6 +761,37 @@ def _GHZ_3qubits_6_params_cx7(params, barriers = False):
     c.rx(params[4], 1)
     c.ry(params[5], 2)
     if barriers: c.barrier()
+    return c
+
+
+def _GHZ_3qubits_cx7_u3_correction(params, barriers = False):
+    """ Returns function handle for 6 param ghz state 7 swaps"""
+    logical_qubits = qk.QuantumRegister(3, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    c.ry(params[2], 0) 
+    c.rx(params[1], 1) 
+    c.rx(params[0], 2) 
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    c.swap(1, 2)
+    c.swap(0, 2)
+    if barriers: c.barrier()
+    c.cnot(0,2) 
+    c.cnot(1,2) 
+    if barriers: c.barrier()
+    c.rx(params[3], 0)
+    c.rx(params[4], 1)
+    c.ry(params[5], 2)
+    if barriers: c.barrier()
+    c.rx(params[6], 0)
+    c.rx(params[7], 1)
+    c.rx(params[8], 2)
+    c.rz(params[9], 0)
+    c.rz(params[10], 1)
+    c.rz(params[11], 2)
     return c
     
 def _GraphCycl_6qubits_6params(params, barriers = False):        
