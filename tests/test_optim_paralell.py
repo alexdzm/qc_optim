@@ -68,7 +68,7 @@ funcs = [az._GHZ_3qubits_6_params_cx0,
          az._GHZ_3qubits_6_params_cx7,
          az._GHZ_3qubits_cx7_u3_correction]
 anz_vec = [az.AnsatzFromFunction(fun) for fun in funcs]
-anz_vec = [az.RegularU3Ansatz(3, 1)]
+anz_vec = [az.RegularU3Ansatz(3, 1, qubit_names = 'logicals')]
 cost_list = [cost.GHZPauliCost3qubits(anz, inst, invert=True) for anz in anz_vec]
 nb_params = anz_vec[0].nb_params
 cost_list = np.atleast_1d(cost_list[NB_SWAPS])

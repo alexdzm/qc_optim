@@ -76,11 +76,12 @@ class BaseAnsatz(AnsatzInterface):
                  self,
                  num_qubits,
                  depth,
+                 qubit_names = None,
                  **kwargs
                 ):
         self._nb_qubits = num_qubits
         self._depth = depth
-
+        self._qubit_names = qubit_names
         # make circuit and generate parameters
         self._params = self._generate_params()
         self._nb_params = len(self._params)
@@ -339,8 +340,11 @@ class RegularU3Ansatz(BaseAnsatz):
         N = self._nb_qubits
         barriers = True
         
-        qc = qk.QuantumCircuit(N)
-
+        if self._qubit_names == None:
+            qc = qk.QuantumCircuit(N)
+        else:
+            logical_qubits = qk.QuantumRegister(3, self._qubit_names)
+            qc = qk.QuantumCircuit(logical_qubits)
         egate = qc.cx # entangle with CNOTs
 
         param_counter = 0
@@ -393,7 +397,11 @@ class RegularU2Ansatz(BaseAnsatz):
         N = self._nb_qubits
         barriers = True
         
-        qc = qk.QuantumCircuit(N)
+        if self._qubit_names == None:
+            qc = qk.QuantumCircuit(N)
+        else:
+            logical_qubits = qk.QuantumRegister(3, self._qubit_names)
+            qc = qk.QuantumCircuit(logical_qubits)
 
         egate = qc.cx # entangle with CNOTs
 
