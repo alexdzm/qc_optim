@@ -285,9 +285,17 @@ class Batch():
         if type(obj_in) == list:
             return self.result(name)
         else:
-            return self.result(obj_in)        
+            return self.result(obj_in)
     
-    
+    def flush(self):
+        """
+        Flushes everything, effectively a hard reset
+        """
+        self.circ_list = []
+        self._last_circ_list = None
+        self._last_results_obj = None    
+        self._known_optims = []
+
 
 class SafeString():
     """ This class keeps track of previous random strings and guarantees that

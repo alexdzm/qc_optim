@@ -29,12 +29,12 @@ pi= np.pi
 NB_SHOTS_DEFAULT = 2048
 OPTIMIZATION_LEVEL_DEFAULT = 0
 TRANSPILER_SEED_DEFAULT = 10
-NB_INIT = 50
+NB_INIT = 100
 NB_ITER = 50
-NB_SWAPS = -1
-NB_DELTA = pi/4
+NB_SWAPS = 0
+NB_DELTA = pi/8
 CHOOSE_DEVICE = True
-SAVE_DATA = False
+SAVE_DATA = True
 
 
 # ===================
@@ -55,6 +55,9 @@ if CHOOSE_DEVICE:
 # Generate ansatz and const functins (will generalize this in next update)
 # ===================
 x_sol = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
+x_sol_u3_2 = np.array([1.,  2.,  1.,  0.,  3.,  1.,  
+                       2.,  3.,  1.,  2.,  2.,  3.,  
+                       2.,  2.,  0., -0.,  2.,  3.])*pi/2
 funcs = [az._GHZ_3qubits_6_params_cx0,
          az._GHZ_3qubits_6_params_cx1,
          az._GHZ_3qubits_6_params_cx2,
@@ -65,6 +68,7 @@ funcs = [az._GHZ_3qubits_6_params_cx0,
          az._GHZ_3qubits_6_params_cx7,
          az._GHZ_3qubits_cx7_u3_correction]
 anz_vec = [az.AnsatzFromFunction(fun) for fun in funcs]
+anz_vec = [az.RegularU3Ansatz(3, 1)]
 cost_list = [cost.GHZPauliCost3qubits(anz, inst, invert=True) for anz in anz_vec]
 nb_params = anz_vec[0].nb_params
 cost_list = np.atleast_1d(cost_list[NB_SWAPS])
@@ -73,7 +77,8 @@ cost_list = np.atleast_1d(cost_list[NB_SWAPS])
 # ======================== /
 #  Default BO optim args
 # ======================== /
-domain = [x_sol - NB_DELTA*np.ones(nb_params), x_sol +  NB_DELTA*np.ones(nb_params)]
+domain = [(0, 2*np.pi) for i in range(nb_params)]
+domain = [x_sol_u3_2 - NB_DELTA*np.ones(nb_params), x_sol_u3_2 +  NB_DELTA*np.ones(nb_params)]
 domain = np.array(domain).transpose()
 if NB_SWAPS == -1:
     domain = add_reduced_domain(6, 0.1, domain)
@@ -84,7 +89,7 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
                                 eval_init=False)
 
 bo_args['nb_iter'] = NB_ITER + NB_INIT
-bo_args['acquisition_weight'] = 5
+bo_args['acquisition_weight'] = 2
 
 spsa_args = {'a':1, 'b':0.628, 's':0.602, 
              't':0.101,'A':0,'domain':[(0, 2*np.pi) for i in range(anz_vec[0].nb_params)],
@@ -184,9 +189,11 @@ except:
 x_opt_pred = [opt.best_x for opt in runner.optim_list]
 
 # Get baselines
-runner.shot_noise(x_sol, nb_trials=5)
-Batch.submit_exec_res(runner)
-baselines = runner._results_from_last_x()
+if len(x_sol_u3_2) == anz_vec[0].nb_params:
+    x_sol = x_sol_u3_2
+    runner.shot_noise(x_sol, nb_trials=5)
+    Batch.submit_exec_res(runner)
+    baselines = runner._results_from_last_x()
 
 # Get bopt_results
 runner.shot_noise(x_opt_pred, nb_trials=5)
