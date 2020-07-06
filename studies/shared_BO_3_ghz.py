@@ -5,6 +5,7 @@ Created on Mon Jun 8 09:15:32 2020
 @author: Kiran
 """
 
+# 
 #%% IMPORTS
 
 import copy
@@ -28,13 +29,13 @@ from qcoptim import optimisers as op
 # Defaults and global objects
 # ======================== /
 pi= np.pi
-NB_SHOTS_DEFAULT = 2048
+NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 15
-NB_CALLS = 150
-NB_IN_IT_RATIO = 0.5002048
-NB_OPT_VEC = [1, 2, 3, 4]
-SAVE_DATA = True
+NB_TRIALS = 2
+NB_CALLS = 300
+NB_IN_IT_RATIO = 0.5001024
+NB_OPT_VEC = [1,2]
+SAVE_DATA = False
 
 nb_init_vec = []
 nb_iter_vec = []
@@ -42,6 +43,8 @@ for opt in NB_OPT_VEC:
     nb_init_vec.append(round((NB_CALLS * NB_IN_IT_RATIO) / opt))
     nb_iter_vec.append(round((NB_CALLS * (1 - NB_IN_IT_RATIO)) / opt))
     print(opt * (nb_init_vec[-1] + nb_iter_vec[-1]))
+# for ii in range(1,len(NB_OPT_VEC)):
+#     nb_init_vec[ii] = nb_init_vec[0] - 2*ii
 
 simulator = qk.Aer.get_backend('qasm_simulator')
 inst = qk.aqua.QuantumInstance(simulator,
@@ -57,7 +60,14 @@ np.random.seed(int(time.time()))
 # Generate ansatz and cost here
 # ======================== /
 x_sol = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
-anz = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx0, x_sol = x_sol)
+anz_hard = az.AnsatzFromFunction(az._GraphCycl_6qubits_24params)
+anz_medi = az.AnsatzFromFunction(az._GraphCycl_6qubits_12params)
+anz_easy = az.AnsatzFromFunction(az._GraphCycl_6qubits_6params)
+anz_rand = az.RandomAnsatz(6, 2)
+
+anz_ghz = az.AnsatzFromFunction(az._GHZ_3qubits_6_params_cx0)
+
+anz = anz_ghz
 cst = cost.GHZPauliCost(anz, inst, invert = True)
 
 
@@ -73,16 +83,16 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
 # ======================== /
 # Create runners
 # ======================== /
-df = pd.DataFrame()
+# df = pd.DataFrame()
 runner_dict = {}
 for trial in range(NB_TRIALS):
     for opt, init, itt in zip(NB_OPT_VEC, nb_init_vec, nb_iter_vec):
-        bo_args['nb_iter'] = itt*opt
+        bo_args['nb_iter'] = itt*opt + init
         bo_args['initial_design_numdata'] = init
         runner = op.ParallelRunner([cst]*opt, 
                                    op.MethodBO, 
                                    optimizer_args = bo_args,
-                                   share_init = False,
+                                   share_init = True,
                                    method = 'shared')        
         runner_dict[(opt,trial)] = [runner, itt]
 
@@ -185,8 +195,16 @@ if SAVE_DATA:
 #        fname = 'GHZWitness2Cost_150calls_0p5001024ratio.pkl' 
 #        fname = 'GHZWitness2Cost_150calls_0p5002048ratio.pkl' 
 #        fname = 'GHZWitness2Cost_150calls_0p50064ratio.pkl'
+# 
+#         1 optims 
+#         fname = 'GHZPauliCost_180calls_0p500128ratio.pkl'
+#         fname = 'GHZPauliCost_180calls_0p5001024ratio.pkl'
+#         fname = 'GHZPauliCost_180calls_0p5002048ratio.pkl'
+#
+#         1 optim, proper update weights
+#         fname = 'GHZPauliCost_100calls_0p5002048ratio.pkl'
 # ========================= /
-if True: 
+if SAVE_DATA: 
     import copy
     import dill
     import time
@@ -227,10 +245,20 @@ for ii in range(len(df)):
     v = df.iloc[ii]['std']
     t = df.iloc[ii]['trial']
     o = df.iloc[ii]['nb_opt']
-    axes[0].errorbar(o + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
+    axes[0].errorbar(o + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='t {}'.format(t))
 axes[0].set_title('Shot noise ({} shots/circ)'.format(NB_SHOTS_DEFAULT))
 axes[0].set_ylabel('Cost ' + fname)
 axes[0].set_xlabel('nb optimisers')
+
+
+# plt.figure(4)
+# for ii in range(len(df)):
+#     m = df.iloc[ii]['mean'] 
+#     v = df.iloc[ii]['std']
+#     t = df.iloc[ii]['trial']
+#     o = df.iloc[ii]['nb_opt']
+#     plt.plot(o + 0.1*t/NB_TRIALS, np.log10(m), 'b.')
+# plt.ylabel('log10 Cost')
 
 
 
@@ -261,7 +289,7 @@ for ii, opt in enumerate(NB_OPT_VEC):
     for trial in range(NB_TRIALS):
         data = np.ravel(example_optim[(opt, trial)].Y)
         iter_data = data[nb_init_vec[ii]:]
-        iter_data = data
+        # iter_data = data
         sns.scatterplot(np.arange(1,len(iter_data)+1),  iter_data, ax=axes[ii])
 axes[ii].set_xlabel('iter')
 f.show()

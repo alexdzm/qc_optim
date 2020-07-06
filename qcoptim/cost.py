@@ -557,6 +557,27 @@ class GHZPauliCost(Cost):
             return (1+np.dot([expected_parity(c) for c in counts], weights))/dim
         return meas_func
 
+class GHZPauliCost3qubits(Cost):
+    """ Cost = fidelity w.r.t. a N-qubit GHZ state, estimated based on the 
+    expected values of N-fold Pauli operators (e.g. 'XXY'). Uses a reduced commuting
+    measurement basis
+    """
+    def _gen_list_meas(self):
+        """ Only works for 3 qubits (so far)"""
+        return ['xxx','xyy','yxy','yyx', 'zzz']
+    
+    def _gen_meas_func(self):
+        weights = [1, -1, -1, -1]
+        dim = self.dim
+        def meas_func(counts):
+            x_counts = counts[:-1]
+            x_parity = np.dot([expected_parity(c) for c in x_counts], weights)
+            z_parity = expected_parity(counts[-1], [1,2]) + expected_parity(counts[-1], [0,2]) + expected_parity(counts[-1], [0,1])
+            return (1 + x_parity + z_parity)/dim
+        return meas_func
+    
+    
+
 class GHZWitness1Cost(Cost):
     """ Cost based on witnesses for genuine entanglement ([guhne2005])
     Stabilizer generators S_l of GHZ are (for n=4) S = <XXXX, ZZII, IZZI, IIZZ>
@@ -654,6 +675,8 @@ class GraphCyclPauliCost(Cost):
         def meas_func(counts):
             return (1+np.dot([expected_parity(c) for c in counts], weights))/dim
         return meas_func
+
+
 
 class GraphCyclWitness1Cost(Cost):
     """ Cost function based on the construction of witnesses for genuine 
@@ -803,6 +826,53 @@ class RandomXYCost(Cost):
         self.hamiltonian = hamiltonian
     def _gen_list_meas(self):
         nb_qubits = self.nb_qubits
+        x = 'x'*nb_qubits
+        y = 'y'*nb_qubits
+        return [x,y]
+    
+    def _gen_meas_func(self):
+        def func(count_list):
+            xy_term = 0
+            for ii in range(self.nb_qubits):
+                for jj in range(self.nb_qubits):
+                    if ii != jj:
+                        xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[0], ii, jj)
+                        xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[1], ii, jj)
+            return xy_term
+        return func
+
+#======================#
+# Random xy-Hamiltonian related cost
+#======================#
+class RandomXYCostWithZ(Cost):
+    """
+    Cost function for energy expectation value of the random 1D xy hamiltonian
+    
+    Custom parameters
+    -----------
+    hamiltonian : 2D np array
+        Diagonal elements are the longitudinal (z) field terms.
+        Off diagonal elements are the random couplings of the (XX + YY) terms
+    """
+    def __init__(self, ansatz, instance, hamiltonian,
+                 fix_transpile = True, # maybe redundent now
+                 keep_res = False, 
+                 verbose = True, 
+                 debug = False, 
+                 error_correction = False,
+                 name = None, **args):
+        super().__init__( ansatz, instance, 
+                         fix_transpile, # maybe redundent now
+                         keep_res, 
+                         verbose, 
+                         debug, 
+                         error_correction,
+                         name, **args)
+        assert self.nb_qubits == hamiltonian.shape[0], "Input hamiltonian must have same dims as nb_qubits (see docstring)"
+        assert hamiltonian.shape[0] == hamiltonian.shape[1], "Input Hamiltonian should be square (see docstring)"
+        self.hamiltonian = hamiltonian
+    def _gen_list_meas(self):
+        nb_qubits = self.nb_qubits
         z = 'z'*nb_qubits
         x = 'x'*nb_qubits
         y = 'y'*nb_qubits
@@ -821,7 +891,6 @@ class RandomXYCost(Cost):
                         xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[2], ii, jj)
             return field_term + xy_term
         return func
-
 # ------------------------------------------------------
 # Functions to compute expected values based on measurement outcomes counts as 
 # returned by qiskit
@@ -1552,3 +1621,12 @@ if __name__ == '__main__':
     xy_cost = RandomXYCost(ansatz, inst, h_xy)
     assert abs(xy_cost([0,0,0,0,0,0])) < 0.08, "z = -1 state should be close to zero (this may fail very randomly)" 
     assert abs(xy_cost([0,0,0,pi/2,pi/2,pi/2]) - 1) < 0.08, "XY product state state should be close to 1 (this may fail very randomly)" 
+    
+    
+    # Testing new ghz cost
+    x_rands = np.random.rand(5, 6)
+    ghz = GHZPauliCost(ansatz, inst)
+    ghz_reduced = GHZPauliCost3qubits(ansatz, inst)
+    data = np.squeeze([(ghz_reduced(x), ghz(x)) for x in x_rands]).transpose()
+    assert max(abs(data[0] - data[1])) < 0.015, "Resulst should at most differ by shotnise in the measurement funcs"
+    assert ghz(X_SOL) == ghz_reduced(X_SOL), "Results should be equal"

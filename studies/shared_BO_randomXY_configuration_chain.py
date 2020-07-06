@@ -26,18 +26,20 @@ from qcoptim import optimisers as op
 # ======================== /
 # Defaults and global objects
 # ======================== /
-pi= np.pi
+pi = np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 10
-NB_CALLS = 180
+NB_TRIALS = 5
+NB_CALLS = 500
 NB_IN_IT_RATIO = 0.5001024
-NB_SPINS = 7
-NB_DEPTH = 3
+NB_SPINS = 6
+NB_DEPTH = 1
 NB_OPT_VEC = [1]
 SAVE_DATA = True
-NB_ANZ_SEED = 15
-NB_CONFIGS = 10
+NB_ANZ_SEED = 10
+NB_HAM_SEED = 3
+NB_CONFIGS = 1
+
 
 nb_init_vec = [round(NB_CALLS * NB_IN_IT_RATIO)]
 nb_iter_vec = [round(NB_CALLS * (1 - NB_IN_IT_RATIO) / NB_CONFIGS)]
@@ -54,20 +56,28 @@ np.random.seed(int(time.time()))
 # ======================== /NB_CONFIGS
 # Generate ansatz and cost here
 # ======================== /
-anz = az.RegularRandomU3ParamAnsatz(NB_SPINS, NB_DEPTH, seed = NB_ANZ_SEED)
+anz = az.RegularU2Ansatz(NB_SPINS, 
+                         NB_DEPTH, 
+                         seed = NB_ANZ_SEED,
+                         cyclic = True)
 cstvec = []
 hvec = []
 h_config = []
-for jj in np.linspace(0, 1, NB_CONFIGS):
+if NB_CONFIGS > 1:
+    alphaVec = np.logspace(0, 1, NB_CONFIGS)
+else:
+    alphaVec = [10]
+for aa in alphaVec:
     hamiltonian = ut.gen_random_xy_hamiltonian(NB_SPINS,
-                                               U = 0.0,
-                                               J = jj,
-                                               delta = 0.0,
-                                               alpha = 100.0) / NB_SPINS
+                                               U = 0,
+                                               J = 0,
+                                               delta = 1,
+                                               alpha = aa,
+                                               seed = NB_HAM_SEED) / NB_SPINS
     hvec.append(hamiltonian)
     cst = cost.RandomXYCost(anz, inst, hamiltonian)
     cstvec.append(cst)
-    h_config.append(round(jj, 2))
+    h_config.append(round(aa, 2))
 
 # ======================== /
 #  Default BO optim args
@@ -76,7 +86,7 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
                                 domain= [(0, 2*np.pi) for i in range(anz.nb_params)], 
                                 nb_init=0,
                                 eval_init=False)
-
+bo_args['acquisition_weight'] = 20
 
 # ======================== /
 # Create runners
@@ -85,7 +95,7 @@ df = pd.DataFrame()
 runner_dict = {}
 for trial in range(NB_TRIALS):
     for opt, init, itt in zip(NB_OPT_VEC, nb_init_vec, nb_iter_vec):
-        bo_args['nb_iter'] = itt*len(h_config)
+        bo_args['nb_iter'] = itt*len(h_config) + init
         bo_args['initial_design_numdata'] = init
         runner = op.ParallelRunner(cstvec*opt, 
                                    op.MethodBO, 
@@ -102,9 +112,14 @@ for trial in range(NB_TRIALS):
 print('Init runners')
 t = time.time()
 Batch = ut.Batch(inst)
-for run, _ in runner_dict.values():
-    run.next_evaluation_circuits()
+for run, itt in runner_dict.values():
+    bo_args = run.optimizer_args
+    x_init = ut.gen_params_on_subspace(bo_args, 
+                                       nb_ignore=12,
+                                       nb_ignore_ratio=0.0)
+    run._gen_circuits_from_params([x_init], inplace=True)
     Batch.submit(run)
+    print(itt)
 temp = len(Batch.circ_list)
 Batch.execute()
 
@@ -135,7 +150,6 @@ for ii in range(max(nb_iter_vec)):
             Batch.result(run)
             run.update()
     print('iter: {} of {} took {} s for {} circuits'.format(ii+1, max(nb_iter_vec), round(time.time() - t), temp))
-    np.random.seed(int(time.time()))
 
 
 
@@ -174,9 +188,9 @@ for ct, (opt, trial) in enumerate(runner_dict.keys()):
 # ======================== /
 # Save data
 # ======================== /
-fname = 'Config_' + str(cst.__class__).split('cost.')[1].split("'")[0]
+fname = str(anz.__class__).split('.')[2].split("'")[0] + str(cst.__class__).split('cost.')[1].split("'")[0]
 fname += '_{}qu'.format(NB_SPINS)
-fname = fname + '_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + '.pkl'
+fname = fname + '_{}calls_{}ratio'.format(NB_CALLS,NB_IN_IT_RATIO).replace('.', 'p') + ut.safe_string.gen() + '.pkl'
 if SAVE_DATA:
     dict_to_dill = {'df':df,
                     'anz':anz,
@@ -185,7 +199,8 @@ if SAVE_DATA:
                     'NB_CALLS':NB_CALLS,
                     'NB_SHOTS_DEFAULT':NB_SHOTS_DEFAULT,
                     'hamiltonian':hamiltonian,
-                    'NB_ANZ_SEED':NB_ANZ_SEED}
+                    'NB_ANZ_SEED':NB_ANZ_SEED,
+                    'NB_HAM_SEED':NB_HAM_SEED}
     with open(fname, 'wb') as f:                                                                                                                                                                                                          
         dill.dump(dict_to_dill, f) 
 
@@ -195,8 +210,13 @@ if SAVE_DATA:
 
 #%% LOAD / PLOT DATA
 # ========================= / 
-# Files:    10 configs  10 trials
-#           fname = 'RandomXYCost_7qubits_150calls_0p93001024ratio.pkl'
+# Files:    diff configs  1 trial 4 qubits 1000 calls
+#           fname = 'RandomAnsatz_5CONF_RandomXYCost_4qu_1000calls_0p5001024ratioIn6.pkl'
+#           fname = 'RandomAnsatz_10CONF_RandomXYCost_4qu_1000calls_0p5001024ratiofHg.pkl'
+#           fname = 'RandomAnsatz_15CONF_RandomXYCost_4qu_1000calls_0p5001024ratioWip.pkl'
+
+#           fname = 'RandomAnsatz_15CONF_RandomXYCost_4qu_1500calls_0p5001024ratiocm1.pkl'
+#           fname = 'RandomAnsatzRandomXYCost_4qu_1500calls_0p5001024ratioZ0S.pkl''
 # ========================= /
 if SAVE_DATA:
     import copy
@@ -231,7 +251,6 @@ if SAVE_DATA:
 # ======================== /
 sns.set()
 plt.close('all')
-
 f = plt.figure(1, figsize=(10,5))
 axes = f.subplots(1, 3, sharey=True)
 for ii in range(len(df)):
@@ -242,9 +261,11 @@ for ii in range(len(df)):
     h = df.iloc[ii]['h_config']
     h = df.h_config.unique().tolist().index(h)
     axes[0].errorbar(h + 0.1*t/NB_TRIALS, m, yerr = v, fmt = 'r.', label='bopt')
+# axes[0].plot([-0.88223511, -0.85469458, -0.83206065, -0.82616974, -0.83419339, -0.85555687, -0.89058293, -0.92913224, -0.95236189, -0.95812539])
 axes[0].set_title('Shot noise ({} shots/circ)'.format(NB_SHOTS_DEFAULT))
 axes[0].set_ylabel('Cost ' + fname)
 axes[0].set_xlabel('h_config')
+# axes[0].set_ylim(-0.96, -0.6)
 
 
 
@@ -295,3 +316,19 @@ f.show()
 axes[0].set_ylabel('x_{i + 1} - x_{i}')
 [ax.set_xlabel('iter') for ax in axes]
 f.show()
+
+
+
+# f = plt.figure(10)
+# axes = f.subplots(int(np.sqrt(len(hvec))), int(np.sqrt(len(hvec))), sharey=True, sharex = True, squeeze=False)
+# axes = np.ravel(axes)
+# for ii, h in enumerate(hvec):
+#     pt = int(np.sqrt(len(hvec)))**2
+#     axes[ii%pt].pcolor(np.log(h))
+
+
+# def check_ham_configs(hvec):
+#     for ct, h in enumerate(hvec):
+#         for rr, dat in enumerate(h):
+#             plt.plot(dat[(rr+1):], '.-', label = str(ct))
+# check_ham_configs(hvec)

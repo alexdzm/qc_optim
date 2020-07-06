@@ -44,7 +44,7 @@ __all__ = [
     'get_KH2_qubit_op',
     'enforce_qubit_op_consistency'
 ]
-
+import pdb
 import dill
 import string
 import random
@@ -151,7 +151,8 @@ class BackendManager():
                      optim_lvl = OPTIMIZATION_LEVEL_DEFAULT,
                      noise_model = None, 
                      initial_layout=None,
-                     seed_transpiler=None):
+                     seed_transpiler=None,
+                     measurement_error_mitigation_cls=None):
         """ Generate an instance from the current backend
         Not sure this is needed here: 
             + maybe building an instance should be decided in the main_script
@@ -171,7 +172,8 @@ class BackendManager():
         instance = qk.aqua.QuantumInstance(self.current_backend, shots=nb_shots,
                             optimization_level=optim_lvl, noise_model= noise_model,
                             initial_layout=initial_layout,
-                            seed_transpiler=seed_transpiler)
+                            seed_transpiler=seed_transpiler,
+                            measurement_error_mitigation_cls=measurement_error_mitigation_cls)
         print('Generated a new quantum instance')
         return instance
 
@@ -261,6 +263,7 @@ class Batch():
         for experiment in results_di['results']:
             if name in experiment['header']['name']:
                 experiment['header']['name'] = experiment['header']['name'].split(name)[1]
+                # _round_res_dict(experiment['data']['counts'])
                 relevant_results.append(experiment)
         results_di['results'] = relevant_results
         results_obj = qk.result.result.Result.from_dict(results_di)
@@ -285,9 +288,17 @@ class Batch():
         if type(obj_in) == list:
             return self.result(name)
         else:
-            return self.result(obj_in)        
+            return self.result(obj_in)
     
-    
+    def flush(self):
+        """
+        Flushes everything, effectively a hard reset
+        """
+        self.circ_list = []
+        self._last_circ_list = None
+        self._last_results_obj = None    
+        self._known_optims = []
+
 
 class SafeString():
     """ This class keeps track of previous random strings and guarantees that
@@ -479,8 +490,7 @@ class Results():
         self.data = self._load(f_name)
 
     def _load(self, f_name):
-        """ This doesn't work yet. Looks like I might have to make a data class 
-            (was hoping to avoid this)"""
+        """ Loads in a .pkl file to the object"""
         with open(f_name, 'rb') as f:
             data = dill.load(f)
         if self.reduced_meta:
@@ -559,7 +569,10 @@ class Results():
                   Add log2phys mapping if avaliable"""
         circ = self.data['ansatz']
         depth = self.data['depth']
-        meta = self.data['meta'][0]
+        try:
+            meta = self.data['meta'][0]
+        except:
+            meta = {'backend_name':'device'}
         fig, ax = plt.subplots(1,1)
         circ.draw(output='mpl',ax=ax,scale=0.4, idle_wires=False)
         plt.title('Backend: {} \n Circuit depths = {} \pm {}'.format(meta['backend_name'], np.mean(depth), np.std(depth)))
@@ -1039,7 +1052,8 @@ def gen_random_xy_hamiltonian(nb_spins,
                   U = 1.0,
                   J = 1.0,
                   delta = 0.1,
-                  alpha = 1.0):
+                  alpha = 1.0, 
+                  seed = 10):
     """
     Generates a random XY Hamiltonian. Diag elements are the field strength, 
     and off diagonal elements are the couplings rates of the XX + YY terms 
@@ -1059,15 +1073,49 @@ def gen_random_xy_hamiltonian(nb_spins,
         Drawn from random uniform [0, delta] for now
     alpha : float (default 1)
         Power of the long range decay
+    seed : int (default 10)
+        Seed for random terms
         
     TODO: Different random coupling terms
     """
-    H = np.eye(nb_spins)
+    np.random.seed(seed)
+    H = np.eye(nb_spins)*U
     for ii in range(nb_spins):
         for jj in range(nb_spins):
             if ii != jj:
-                H[ii, jj] = (J + delta*np.random.rand()) / np.abs(ii - jj)**alpha
+                H[ii, jj] = (J + delta*np.random.rand()) / np.abs(ii - jj)**float(alpha)
     return (H + H.transpose())/2
+
+
+def gen_params_on_subspace(bo_args, 
+                           nb_ignore = None, 
+                           nb_ignore_ratio = 1):
+    """
+    Generates initial points on a hypersurface of the full parameter volume. E.g the first
+    n parameters are set to zero, while the rest are drawn from the domain of the input dict
+    TODO: update to take domain from input dict
+    
+    Parameters:
+    ------------
+    bo_args : dict
+        dict containing the settings of the BO optimiser
+    
+    nb_ignore : int
+        number of initial parameters to ignore
+        
+    nb_ignore_ratio : int
+        ratio of init parameters that ignore the first nb_igore terms"""
+    nb_params = len(bo_args['domain'])
+    if nb_ignore == None:
+        nb_ignore = int(nb_params/2)
+    zz = nb_ignore
+    ii = nb_params - nb_ignore
+    init_total = bo_args['initial_design_numdata']
+    init_subspace = int(nb_ignore_ratio * init_total)
+    init_fullspace = init_total - init_subspace
+    zeros = [[0]*zz + list(2*pi*np.random.rand(ii)) for _ in range(init_subspace)]
+    full = [list(2*pi*np.random.rand(ii + zz)) for _ in range(init_fullspace)]
+    return zeros + full
 
 
 def _diff_between_x(X_in):
@@ -1081,3 +1129,28 @@ def _diff_between_x(X_in):
         dX = [dx.dot(dx) for dx in dX]
         dX = np.sqrt(np.array(dX))
         return dX
+
+
+def _round_res_dict(di_in):
+    """
+    Rounds the vales of the input dict. Assumes all values are "roundable"
+    WORKS IN PLACE (not actually needed any more)
+    
+    Parameters:
+    -----------
+    di_in : Input dict
+    """
+    for key in di_in.keys():
+        di_in[key] = int(np.round(di_in[key]))
+    return di_in
+
+
+def _all_keys(di_in, level = ''):
+    """
+    Prints all keys in a nested dict: Equiv to printing objs injson hierarchy"""
+    for key in di_in.keys():
+        print(level + str(key))
+        if type(di_in[key]) == dict:
+            _all_keys(di_in[key], level=level+'>')
+
+
