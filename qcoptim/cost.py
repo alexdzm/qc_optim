@@ -983,6 +983,7 @@ class CostWPO(CostInterface):
         self, 
         results:qk.result.result.Result, 
         name='',
+        real_part=True,
         ):
         """ 
         Evaluate the expectation value of the state produced by the 
@@ -1002,11 +1003,17 @@ class CostWPO(CostInterface):
         name : string, optional
             Used to resolve circuit naming
         """
-        return self.grouped_weighted_operators.evaluate_with_result(
+        mean,std = self.grouped_weighted_operators.evaluate_with_result(
             results,
             statevector_mode=self.instance.is_statevector,
             circuit_name_prefix=name
             )
+        if real_part:
+            if (not np.isclose(np.imag(mean),0.)) or (not np.isclose(np.imag(std),0.)):
+                print('Warning, `evaluate_cost_and_std` throwing away non-zero imaginary part.',file=sys.stderr)
+            return np.real(mean),np.real(std)
+        else:
+            return mean,std
 
     def evaluate_cost(
         self, 
@@ -1032,6 +1039,8 @@ class CostWPO(CostInterface):
             name=name
             )
         if real_part:
+            if not np.isclose(np.imag(mean),0.):
+                print('Warning, `evaluate_cost` throwing away non-zero imaginary part.',file=sys.stderr)
             return np.real(mean)
         else:
             return mean
@@ -1286,7 +1295,7 @@ class CrossFidelity(CostInterface):
         this might not always be possible. We offer a fallback strategy of
         iterating over the full set of nb_random circuits and try...except
         to see if they are in the Results obj. In this case the _nb_random
-        used in the statistics is determined dynamically. As a weak check,
+        used in the statistics is determined dynamically. As a weak check
         this approach fails if the number of results founds in the obj is
         less than `self._subsample_size`.
 
