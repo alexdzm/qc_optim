@@ -1252,7 +1252,7 @@ class CrossFidelity(CostInterface):
         # random state object used to generate random unitaries, using the
         # same seed means multiple calls to this function will produce the 
         # same set of random measurements
-        rand_state = np.random.RandomState(seed=self._seed)
+        rand_state = np.random.default_rng(self._seed)
 
         circ_list = []
         for ii in range(self._nb_random):
