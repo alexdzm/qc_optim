@@ -877,7 +877,7 @@ def get_TFIM_qubit_op(
 
     return qubitOp
 
-def get_KH1_qubit_op(Jx,Jy,Jz,v=1.):
+def get_KH1_qubit_op(Jx,Jy,Jz,v=1.,Jrand=0.,seed=0):
     """ 
     Construct the qubit Hamiltonian for one loop of the Kitaev Ladder:
 
@@ -897,22 +897,29 @@ def get_KH1_qubit_op(Jx,Jy,Jz,v=1.):
         The coupling parameters of the model (labelled above)
     v : float, optional
         Optionally multiply the 1-3 ZZ term by `v` to insert a vortex
+    Jrand : float, optional
+        Strength of the randomness that can be added to all Ji couplings to 
+        resolve the degeneracy of the model.
+    seed : int, optional
+        Seed for the randomness added to the Ji couplings
 
     Returns
     -------
     qubitOp : qiskit.aqua.operators.WeightedPauliOperator
         Qiskit representation of the qubit Hamiltonian
     """
+    from numpy.random import default_rng
+    rng = default_rng(seed=seed)
 
     pauli_terms = []
 
     # ZZ terms
-    pauli_terms.append((Jz,Pauli.from_label('ZIZI')))
-    pauli_terms.append((Jz*v,Pauli.from_label('IZIZ')))
+    pauli_terms.append((Jz+Jrand*rng.uniform(-1,+1),Pauli.from_label('ZIZI')))
+    pauli_terms.append((Jz*v+Jrand*rng.uniform(-1,+1),Pauli.from_label('IZIZ')))
     # XX term
-    pauli_terms.append((Jx,Pauli.from_label('XXII')))
+    pauli_terms.append((Jx+Jrand*rng.uniform(-1,+1),Pauli.from_label('XXII')))
     # YY term
-    pauli_terms.append((Jy,Pauli.from_label('IIYY')))
+    pauli_terms.append((Jy+Jrand*rng.uniform(-1,+1),Pauli.from_label('IIYY')))
 
     qubitOp = WeightedPauliOperator(pauli_terms)
 
