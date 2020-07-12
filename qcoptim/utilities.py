@@ -831,7 +831,7 @@ def get_LiH_shift(dist):
 
 def get_TFIM_qubit_op(
     N,
-    B,
+    B=1,
     J=1,
     pbc=False,
     resolve_degeneracy=False,
@@ -843,9 +843,9 @@ def get_TFIM_qubit_op(
     ----------
     N : int
         The number of spin 1/2 particles in the chain
-    B : float
+    B : float, default 1.
         Transverse field strength
-    J : float, optional default 1.
+    J : float, default 1.
         Ising interaction strength
     pbc : boolean, optional default False
         Set the boundary conditions of the 1d spin chain
