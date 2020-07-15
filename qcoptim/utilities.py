@@ -32,7 +32,7 @@ __all__ = [
     'gen_pkl_file',
     'gate_maps',
     'Results',
-    # Chemistry utilities
+    # Qiskit WPO utilities
     'get_H2_data',
     'get_H2_qubit_op',
     'get_H2_shift',
@@ -40,6 +40,9 @@ __all__ = [
     'get_LiH_qubit_op',
     'get_LiH_shift',
     'get_TFIM_qubit_op',
+    'get_KH1_qubit_op',
+    'get_KH2_qubit_op',
+    'enforce_qubit_op_consistency'
 ]
 import pdb
 import dill
@@ -326,6 +329,7 @@ class SafeString():
         self._previous_random_objects.append(new_string)
         return new_string
 
+# module level instance
 safe_string = SafeString()
 
 # ------------------------------------------------------
@@ -690,8 +694,9 @@ class Results():
             print(temp_k + ':  ' + temp_v)
 
 # ------------------------------------------------------
-# Chemistry related helper functions
+# Qiskit WPO related helper functions
 # ------------------------------------------------------
+
 def get_H2_data(dist):
     """ 
     Use the qiskit chemistry package to get the qubit Hamiltonian for LiH
@@ -826,7 +831,7 @@ def get_LiH_shift(dist):
 
 def get_TFIM_qubit_op(
     N,
-    B,
+    B=1,
     J=1,
     pbc=False,
     resolve_degeneracy=False,
@@ -838,9 +843,9 @@ def get_TFIM_qubit_op(
     ----------
     N : int
         The number of spin 1/2 particles in the chain
-    B : float
+    B : float, default 1.
         Transverse field strength
-    J : float, optional default 1.
+    J : float, default 1.
         Ising interaction strength
     pbc : boolean, optional default False
         Set the boundary conditions of the 1d spin chain
@@ -872,8 +877,152 @@ def get_TFIM_qubit_op(
 
     return qubitOp
 
+def get_KH1_qubit_op(Jx,Jy,Jz,v=1.,Jrand=0.,seed=0):
+    """ 
+    Construct the qubit Hamiltonian for one loop of the Kitaev Ladder:
 
+    0   1
+    o---o
+    |   |
+    o-.-o
+    2   3
 
+    | : Jz
+    --- : Jx
+    -.- : Jy
+
+    Parameters
+    ----------
+    Jx, Jy, Jz : floats
+        The coupling parameters of the model (labelled above)
+    v : float, optional
+        Optionally multiply the 1-3 ZZ term by `v` to insert a vortex
+    Jrand : float, optional
+        Strength of the randomness that can be added to all Ji couplings to 
+        resolve the degeneracy of the model.
+    seed : int, optional
+        Seed for the randomness added to the Ji couplings
+
+    Returns
+    -------
+    qubitOp : qiskit.aqua.operators.WeightedPauliOperator
+        Qiskit representation of the qubit Hamiltonian
+    """
+    from numpy.random import default_rng
+    rng = default_rng(seed=seed)
+
+    pauli_terms = []
+
+    # ZZ terms
+    pauli_terms.append((Jz+Jrand*rng.uniform(-1,+1),Pauli.from_label('ZIZI')))
+    pauli_terms.append((Jz*v+Jrand*rng.uniform(-1,+1),Pauli.from_label('IZIZ')))
+    # XX term
+    pauli_terms.append((Jx+Jrand*rng.uniform(-1,+1),Pauli.from_label('XXII')))
+    # YY term
+    pauli_terms.append((Jy+Jrand*rng.uniform(-1,+1),Pauli.from_label('IIYY')))
+
+    qubitOp = WeightedPauliOperator(pauli_terms)
+
+    return qubitOp
+
+def get_KH2_qubit_op(Jx,Jy,Jz,v=1.):
+    """ 
+    Construct the qubit Hamiltonian for two loops of the Kitaev Ladder:
+
+    0   1   2
+    o---o-.-o
+    |   |   |
+    o-.-o---o
+    3   4   5
+
+    | : Jz
+    --- : Jx
+    -.- : Jy
+
+    Parameters
+    ----------
+    Jx, Jy, Jz : floats
+        The coupling parameters of the model (labelled above)
+    v : float, optional
+        Optionally multiply the 1-4 ZZ term by `v` to insert a vortex pair
+
+    Returns
+    -------
+    qubitOp : qiskit.aqua.operators.WeightedPauliOperator
+        Qiskit representation of the qubit Hamiltonian
+    """
+
+    pauli_terms = []
+
+    # ZZ terms
+    pauli_terms.append((Jz,Pauli.from_label('ZIIZII')))
+    pauli_terms.append((Jz*v,Pauli.from_label('IZIIZI')))
+    pauli_terms.append((Jz,Pauli.from_label('IIZIIZ')))
+    # XX terms
+    pauli_terms.append((Jx,Pauli.from_label('XXIIII')))
+    pauli_terms.append((Jx,Pauli.from_label('IIIIXX')))
+    # YY terms
+    pauli_terms.append((Jy,Pauli.from_label('IYYIII')))
+    pauli_terms.append((Jy,Pauli.from_label('IIIYYI')))
+
+    qubitOp = WeightedPauliOperator(pauli_terms)
+
+    return qubitOp
+
+def enforce_qubit_op_consistency(qubit_ops):
+    """
+    Run the qiskit grouped basis algorithm on the set of qubit ops
+    in a way that ensure the basis is common amongst all the ops.
+    The makes sure that the measurement results can be shared. 
+
+    NOTE: this is a simple approach, I tried to make this work with
+    the grouping class and setting a common basis but could not get
+    it to work.
+    
+    Parameters
+    ----------
+    qubit_ops : list of WeightedPauliOperator
+        Operator sets to group
+
+    Returns
+    -------
+    new_qubit_ops : list of WeightedPauliOperator
+        Grouped operator sets with a shared common basis
+    """
+
+    for idx,qop in enumerate(qubit_ops):
+        # type check
+        if not type(qop) is WeightedPauliOperator:
+            raise TypeError
+        # ensure all ops have same number of qubits
+        if idx == 0:
+            num_qubits = qop.num_qubits  
+        else:
+            assert qop.num_qubits==num_qubits, ("Qubit operators passed"
+                +" do not all have the same number of qubits.")
+
+    # for each wpo in qubit_ops, create a dict mapping pauli->weight
+    dict_qops_paulis = [ { p[1]:p[0] for p in qop.paulis } for qop in qubit_ops ]
+
+    # go through all qubit_ops and compile set of all pauli used
+    all_paulis = []
+    for qop in qubit_ops:
+        all_paulis += [ p[1] for p in qop.paulis if p[1] not in all_paulis ]
+
+    # rebuild list of qubit ops with shared set of paulis and a
+    # common ordering
+    new_qops = []
+    for qop,dqop in zip(qubit_ops,dict_qops_paulis):
+        tmp_paulis = []
+        for p in all_paulis:
+            if p in dqop.keys():
+                weight = dqop[p]
+            else:
+                weight = 10*qop.atol
+            tmp_paulis.append((weight,p))
+        new_qops.append(WeightedPauliOperator(tmp_paulis))
+
+    return new_qops
 
 # ------------------------------------------------------
 # Hamiltonian related helper functions

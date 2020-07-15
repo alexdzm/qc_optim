@@ -773,61 +773,6 @@ class ParallelRunner():
     def prefix(self):
         """ Special name for each instance"""
         return self._prefix
-        
-def check_cost_objs_consistency(cost_objs):
-    """
-    Carry out some error checking on the Cost objs passed to the class
-    constructor. Fix small fixable errors and crash for bigger errors.
-    
-    Parameters
-    ----------
-    cost_objs : list of cost objs 
-        The cost objs passed to __init__
-
-    Returns
-    -------
-    new_cost_objs : list of cost objs
-        Possibly slightly altered list of cost objs
-    """
-
-    # TODO: Only makes sense to do this if the cost objs are based on 
-    # the WeightedPauliOps class. Should check that and skip otherwise
-
-    new_cost_objs = []
-    for idx,op in enumerate(cost_objs):
-
-        if idx == 0:
-            test_pauli_set = set([ p[1] for p in op.paulis ])
-            num_qubits = op.num_qubits  
-        else:
-            assert op.num_qubits==num_qubits, ("Cost operators passed to"
-                +" do not all have the same number of qubits.")
-
-            if not len(op.paulis)==len(test_pauli_set):
-                # the new qubit op has a different number of Paulis than the previous
-                new_pauli_set = set([ p[1] for p in op.paulis ])
-                if len(op.paulis)>len(test_pauli_set):
-                    # the new operator set has more paulis the previous
-                    missing_paulis = list(new_pauli_set - test_pauli_set)
-                    paulis_to_add = [ [op.atol*10,p] for p in missing_paulis ]
-                    wpo_to_add = wpo(paulis_to_add)
-                    # iterate over previous qubit ops and add new paulis
-                    for prev_op in qubit_ops:
-                        prev_op.add(wpo_to_add)
-                    # save new reference pauli set
-                    test_pauli_set = new_pauli_set
-                else:
-                    # the new operator set has less paulis than the previous
-                    missing_paulis = list(test_pauli_set - new_pauli_set)
-                    paulis_to_add = [ [op.atol*10,p] for p in missing_paulis ]
-                    wpo_to_add = wpo(paulis_to_add)
-                    # add new paulis to current qubit op
-                    op.add(wpo_to_add)
-
-
-        new_cost_objs.append(op)
-
-    return new_cost_objs
 
 # Run optimiser is common to all? Maybe use an intermediate class 
 #   that impliments ParallelRunner and has method run_optimizer? 
