@@ -128,11 +128,11 @@ class TrivialAnsatz(BaseAnsatz):
 
 class AnsatzFromFunction(AnsatzInterface):
     """ Returns an instance of the GHZ parameterized class"""
-    def __init__(self, ansatz_function, x_sol = None):
+    def __init__(self, ansatz_function, x_sol = None, **kwargs):
         self.x_sol = x_sol
         self._nb_params = count_params_from_func(ansatz_function)
         self._params = self._generate_params()
-        self._circuit = self._generate_circuit(ansatz_function)
+        self._circuit = self._generate_circuit(ansatz_function, **kwargs)
         self._nb_qubits = self._circuit.num_qubits
         self._depth = self._circuit.depth()
 
@@ -143,9 +143,9 @@ class AnsatzFromFunction(AnsatzInterface):
         params = [qk.circuit.Parameter(n) for n in name_params]
         return params
 
-    def _generate_circuit(self, ansatz_function):
+    def _generate_circuit(self, ansatz_function, **kwargs):
         """ To be implemented in the subclasses """
-        return ansatz_function(self._params)
+        return ansatz_function(self._params, **kwargs)
     
     def _reorder_params(self):
         """ Probably useless, but ensures ordred list of params (careful when loading from pkl files)"""
@@ -592,6 +592,33 @@ def count_params_from_func(ansatz):
             return len(call_list)
         except:
             call_list += [0]
+
+
+# ----------------------------------------
+# Useful functions to help build circuits
+# ----------------------------------------
+def _append_random_pauli_layer(circ, params):
+    """
+    Appends single layer of random pauli rotations to input circ (happens in place).
+    Parameters (e.g. pauli angles) must be spesified
+    
+    Parameters:
+    --------
+    circ : qk.QuantumCircuit object
+        A single circiut to append pauli measurements to
+    params : iterable
+        Rotation angles, 1 for each qubit
+    """
+    nb_qubits = circ.n_qubits
+    for ii in range(nb_qubits):
+        rand = np.random.rand()
+        if rand < 1.0/3:
+            circ.rx(params[ii], ii)
+        elif rand > 2.0/3:
+            circ.ry(params[ii], ii)
+        else:
+            circ.rz(params[ii], ii)
+            
     
 # ----------------------------------------
 # Useful function circuits that have been checked
@@ -606,6 +633,7 @@ def _1qubit_2_params_XZ(params, barriers = True):
     c.rz(params[1], qubit=0)
     if barriers: c.barrier()
     return c
+
 
 def _GHZ_3qubits_6_params_cx0(params, barriers = False):
     """ Returns function handle for 6 param ghz state"""
@@ -907,3 +935,62 @@ def _GraphCycl_6qubits_24params(params, barriers = False):
     if barriers: c.barrier()
     return c
 
+
+def _GraphCycl_6qubits_init_rotations(params, 
+                                      random_rotations = False,
+                                      barriers = False):        
+    """ Returns handle to cyc6 cluster state with c-phase gates"""
+    logical_qubits = qk.QuantumRegister(6, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    for ii in range(6):
+        c.h(ii)
+    if barriers: c.barrier()
+    if random_rotations:
+        _append_random_pauli_layer(c, params[:6])
+        _append_random_pauli_layer(c, params[6:])
+    else:
+        c.u2(params[0],params[1],0)
+        c.u2(params[2],params[3],1)
+        c.u2(params[4],params[5],2)
+        c.u2(params[6],params[7],3)
+        c.u2(params[8],params[9],4)
+        c.u2(params[10],params[11],5)
+    if barriers: c.barrier()
+    c.cz(0,1)
+    c.cz(2,3)
+    c.cz(4,5)
+    if barriers: c.barrier()
+    c.cz(1,2)
+    c.cz(3,4)
+    c.cz(5,0)
+    if barriers: c.barrier()
+    return c
+
+
+
+def _GraphCycl_12qubits_init_rotations(params, 
+                                      barriers = False):        
+    """ Returns handle to cyc10 cluster state with c-phase gates"""
+    logical_qubits = qk.QuantumRegister(12, 'logicals')
+    c = qk.QuantumCircuit(logical_qubits)
+    for ii in range(12):
+        c.h(ii)
+    if barriers: c.barrier()
+    _append_random_pauli_layer(c, params[:12])
+    _append_random_pauli_layer(c, params[12:])
+    if barriers: c.barrier()
+    c.cz(0,1)
+    c.cz(2,3)
+    c.cz(4,5)
+    c.cz(6,7)
+    c.cz(8,9)
+    c.cz(10,11)
+    if barriers: c.barrier()
+    c.cz(1,2)
+    c.cz(3,4)
+    c.cz(5,6)
+    c.cz(7,8)
+    c.cz(9,10)
+    c.cz(11,0)
+    if barriers: c.barrier()
+    return c
