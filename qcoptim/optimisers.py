@@ -14,9 +14,10 @@ import sys
 import pdb
 import copy
 from abc import ABC, abstractmethod
+import numpy as np
 
 import GPyOpt
-import numpy as np
+from GPyOpt.experiment_design import initial_design
 
 from . import utilities as ut
 from . import cost
@@ -137,8 +138,7 @@ class MethodBO(Method):
         if self.evaluated_init:
             x_new = self.optimiser._compute_next_evaluations()
         else:
-            size = self._nb_init
-            x_new = self._get_random_points_in_domain(size = size)
+            x_new = initial_design(self.optimiser.initial_design_type, self.optimiser.space, self._nb_init)
         return x_new
     
     def update(self, x_new, y_new):
@@ -173,29 +173,6 @@ class MethodBO(Method):
         # self.optimiser._update_model(self.optimiser.normalization_type)
         # self._best_x = self.optimiser.X[np.argmin(self.optimiser.model.predict(self.optimiser.X, with_noise=False)[0])]
         self.evaluated_init = True
-        
-    def _get_random_points_in_domain(self, size=1):
-        """ 
-        Generate a requested number of random points distributed uniformly
-        over the domain of the BO parameters. (moved from ParallelRunner)
-        
-        Parameters:
-        ----------
-        size: Number of random points requested
-        """
-        for idx,dirn in enumerate(self._args['domain']):
-            assert int(dirn['name'])==idx, 'BO domain dims not being returned in correct order.'
-            assert dirn['type']=='continuous', 'BO domain is not continuous, this is not supported.'
-    
-            dirn_min = dirn['domain'][0]
-            dirn_max = dirn['domain'][1]
-            if idx==0:
-                rand_points = np.random.uniform(dirn_min, dirn_max, size=(size,1))
-            else:
-                _next =  np.random.uniform(dirn_min, dirn_max, size=(size,1))
-                rand_points = np.hstack((rand_points,_next))
-    
-        return rand_points
     
     def _setup_dynamic_weights(self, bo_args):
         """ building the rules to update the weights of the LCB acquisition 
@@ -603,6 +580,8 @@ class ParallelRunner():
         x = self._parallel_x[optim_requester_idx,point_idx]
         y = cost_obj.evaluate_cost(results_obj, name = circ_name)
         #print(f'{cst_eval_idx}'+' '+f'{optim_requester_idx}'+' '+f'{point_idx}'+':'+f'{circ_name}')
+        #print('x : '+f'{x}')
+        #print('y : '+f'{y}')
         return x, y
     
 
