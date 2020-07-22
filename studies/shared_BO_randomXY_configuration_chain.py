@@ -29,11 +29,11 @@ from qcoptim import optimisers as op
 pi = np.pi
 NB_SHOTS_DEFAULT = 1024
 OPTIMIZATION_LEVEL_DEFAULT = 0
-NB_TRIALS = 5
+NB_TRIALS = 4
 NB_CALLS = 500
 NB_IN_IT_RATIO = 0.5001024
-NB_SPINS = 6
-NB_DEPTH = 1
+NB_SPINS = 3
+NB_DEPTH = 2
 NB_OPT_VEC = [1]
 SAVE_DATA = True
 NB_ANZ_SEED = 10
@@ -56,8 +56,8 @@ np.random.seed(int(time.time()))
 # ======================== /NB_CONFIGS
 # Generate ansatz and cost here
 # ======================== /
-anz = az.RegularU2Ansatz(NB_SPINS, 
-                         NB_DEPTH, 
+anz = az.RegularU2Ansatz(NB_SPINS,
+                         NB_DEPTH,
                          seed = NB_ANZ_SEED,
                          cyclic = True)
 cstvec = []
@@ -82,8 +82,8 @@ for aa in alphaVec:
 # ======================== /
 #  Default BO optim args
 # ======================== /
-bo_args = ut.gen_default_argsbo(f=lambda x: .5, 
-                                domain= [(0, 2*np.pi) for i in range(anz.nb_params)], 
+bo_args = ut.gen_default_argsbo(f=lambda x: .5,
+                                domain= [(0, 2*np.pi) for i in range(anz.nb_params)],
                                 nb_init=0,
                                 eval_init=False)
 bo_args['acquisition_weight'] = 20
@@ -97,11 +97,11 @@ for trial in range(NB_TRIALS):
     for opt, init, itt in zip(NB_OPT_VEC, nb_init_vec, nb_iter_vec):
         bo_args['nb_iter'] = itt*len(h_config) + init
         bo_args['initial_design_numdata'] = init
-        runner = op.ParallelRunner(cstvec*opt, 
-                                   op.MethodBO, 
+        runner = op.ParallelRunner(cstvec*opt,
+                                   op.MethodBO,
                                    optimizer_args = bo_args,
                                    share_init = True,
-                                   method = 'shared')        
+                                   method = 'shared')
         runner_dict[(opt,trial)] = [runner, itt]
 
 
@@ -114,7 +114,7 @@ t = time.time()
 Batch = ut.Batch(inst)
 for run, itt in runner_dict.values():
     bo_args = run.optimizer_args
-    x_init = ut.gen_params_on_subspace(bo_args, 
+    x_init = ut.gen_params_on_subspace(bo_args,
                                        nb_ignore=12,
                                        nb_ignore_ratio=0.0)
     run._gen_circuits_from_params([x_init], inplace=True)
@@ -126,7 +126,7 @@ Batch.execute()
 for run, _ in runner_dict.values():
     Batch.result(run)
     run.init_optimisers()
-    
+
 print('took {} s to init from {} circuits'.format(round(time.time() - t), temp))
 
 # ======================== /
@@ -140,10 +140,10 @@ for ii in range(max(nb_iter_vec)):
         if ii < max_itt:
             run.next_evaluation_circuits()
             Batch.submit(run)
-            
+
     temp = len(Batch.circ_list)
     Batch.execute()
-    
+
     for opt, trial in runner_dict.keys():
         run, max_itt = runner_dict[(opt, trial)]
         if ii < max_itt:
@@ -165,21 +165,21 @@ for ct, (opt, trial) in enumerate(runner_dict.keys()):
     run.shot_noise(x_opt_pred, nb_trials=5)
     Batch.submit_exec_res(run)
     bopt_lines = run._results_from_last_x()
-    
+
     m = np.mean(bopt_lines, axis = 1)
     v = np.std(bopt_lines, axis = 1)
-    
-    dat = [m, v, 
-           [opt]*len(cstvec), 
+
+    dat = [m, v,
+           [opt]*len(cstvec),
            [trial]*len(cstvec),
            [nb_init_vec[NB_OPT_VEC.index(opt)]]*len(cstvec),
            [nb_iter_vec[NB_OPT_VEC.index(opt)]]*len(cstvec),
            h_config,
            [NB_ANZ_SEED]*len(cstvec)]
     dat = np.array(dat).transpose()
-    columns = ['mean', 'std', 'nb_opt', 'trial', 
+    columns = ['mean', 'std', 'nb_opt', 'trial',
                'nb_init', 'nb_iter', 'h_config', 'anz_seed']
-    
+
     df_temp = pd.DataFrame(dat, columns = columns)
     df = df.append(df_temp)
     example_optim[(opt, trial)] = run.optim_list
@@ -201,15 +201,15 @@ if SAVE_DATA:
                     'hamiltonian':hamiltonian,
                     'NB_ANZ_SEED':NB_ANZ_SEED,
                     'NB_HAM_SEED':NB_HAM_SEED}
-    with open(fname, 'wb') as f:                                                                                                                                                                                                          
-        dill.dump(dict_to_dill, f) 
+    with open(fname, 'wb') as f:
+        dill.dump(dict_to_dill, f)
 
 
 
 
 
 #%% LOAD / PLOT DATA
-# ========================= / 
+# ========================= /
 # Files:    diff configs  1 trial 4 qubits 1000 calls
 #           fname = 'RandomAnsatz_5CONF_RandomXYCost_4qu_1000calls_0p5001024ratioIn6.pkl'
 #           fname = 'RandomAnsatz_10CONF_RandomXYCost_4qu_1000calls_0p5001024ratiofHg.pkl'
@@ -308,15 +308,14 @@ axes = np.ravel(axes)
 for opt, trial in example_optim.keys():
     for ii, h_config in enumerate(df.h_config.unique()):
         bo = example_optim[(opt,trial)][ii].optimiser
-        x = ut._diff_between_x(bo.X) 
-        sns.lineplot(np.arange(1, len(x) + 1),  x, ax=axes[ii]) 
+        x = ut._diff_between_x(bo.X)
+        sns.lineplot(np.arange(1, len(x) + 1),  x, ax=axes[ii])
         axes[ii].set_title('h_config: {}'.format(h_config))
         axes[ii].set_xlabel('iter')
 f.show()
 axes[0].set_ylabel('x_{i + 1} - x_{i}')
 [ax.set_xlabel('iter') for ax in axes]
 f.show()
-
 
 
 # f = plt.figure(10)
@@ -332,3 +331,5 @@ f.show()
 #         for rr, dat in enumerate(h):
 #             plt.plot(dat[(rr+1):], '.-', label = str(ct))
 # check_ham_configs(hvec)
+
+

@@ -31,7 +31,7 @@ NB_DELTA = pi/12
 CHOOSE_DEVICE = True
 SAVE_DATA = True
 SING_LAYOUT = [1, 2, 3, 8, 7, 6]
-ROCH_LAYOUT = [0, 1, 2, 3, 4, 6, 13, 12, 11, 10, 9, 6]
+ROCH_LAYOUT = [0, 1, 2, 3, 4, 6, 13, 12, 11, 10, 9, 5]
 
 # ===================
 # Choose a backend using the custom backend manager and generate an instance
@@ -77,7 +77,7 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
                                 eval_init=False)
 bo_args['nb_iter'] = NB_ITER + NB_INIT
 bo_args['acquisition_weight'] = 5
-
+bo_args['acquisition_type'] = 'EI'
 
 # ======================== /
 # Init runner classes with different methods
