@@ -359,8 +359,8 @@ def get_path_GPyOpt():
 def get_best_from_bo(bo):
     """ Extract from a BO object the best set of parameters and fom
     based on from observed data and model"""
-    x_obs = bo.x_opt
-    y_obs = bo.fx_opt 
+    x_obs = bo.X[np.argmin(bo.Y),:] #bo.x_opt
+    y_obs = np.min(bo.Y) #bo.fx_opt 
     pred = bo.model.predict(bo.X, with_noise=False)[0]
     x_pred = bo.X[np.argmin(pred)]
     y_pred = np.min(pred)
