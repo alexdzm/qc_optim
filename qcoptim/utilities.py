@@ -1161,3 +1161,31 @@ def _all_keys(di_in, level = ''):
             _all_keys(di_in[key], level=level+'>')
 
 
+def gen_quick_noise(readout = 0.05,
+                    cnot = 0.02,
+                    gate = 0.001):
+    """
+    Generates a quick noise model for a simulator backend. Returns 
+    instance of qk.aer.noise.NoiseModel
+    
+    Parameters
+    ------
+    readout : float [0,1] (default 0.05)
+        readout error probability
+    cnot : float [0,1] (default 0.2)
+        cnot error probability
+    gate : float [0,1] (default 0.001)
+        single qubit gate error probability """
+    noise_model =  qk.providers.aer.noise.NoiseModel()
+
+    
+    # Error probabilities for 1 and 2 qubit gates, and readout
+    gate = qk.providers.aer.noise.depolarizing_error(gate, 1)
+    cnot = qk.providers.aer.noise.depolarizing_error(cnot, 2)
+    readout = [[1-readout, readout], [readout, 1-readout]]
+    
+    # Add errors to noise model
+    noise_model.add_all_qubit_quantum_error(gate, ['u1', 'u2', 'u3'])
+    noise_model.add_all_qubit_quantum_error(cnot, ['cx'])
+    noise_model.add_all_qubit_readout_error(readout)
+    return noise_model
