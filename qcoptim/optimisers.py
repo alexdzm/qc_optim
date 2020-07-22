@@ -144,20 +144,19 @@ class MethodBO(Method):
     def update(self, x_new, y_new):
         """
         Updates the interal state of the optimiser with the data provided
-        
-        TODO: Fix input input so update can accept vectors. 
         TODO: User better method to update internal model
         
         Parametres:
         -------------
         x_new: Parameter points that were requested/provided
-        
         y_new: Cost functino evalutations for those parameter points
         """
         #raise Warning('Need to fix dims: can currently only update one at a time')
+        x_new = np.atleast_2d(x_new)
+        y_new = np.atleast_2d(y_new)
         if not self.evaluated_init:
-            self.optimiser.X = np.array([x_new])
-            self.optimiser.Y = np.array([[y_new]])
+            self.optimiser.X = x_new
+            self.optimiser.Y = y_new
         else:
             self.optimiser.X = np.vstack((self.optimiser.X, x_new))
             self.optimiser.Y = np.vstack((self.optimiser.Y, y_new))
@@ -167,8 +166,8 @@ class MethodBO(Method):
             self._update_weights(self.optimiser)
         
         # It could also be + len(x_new)
-        self._iter += 1
-        self.optimiser.num_acquisitions += 1
+        self._iter += x_new.shape[0]
+        self.optimiser.num_acquisitions += x_new.shape[0]
 
         # self.optimiser._update_model(self.optimiser.normalization_type)
         # self._best_x = self.optimiser.X[np.argmin(self.optimiser.model.predict(self.optimiser.X, with_noise=False)[0])]
@@ -721,9 +720,26 @@ class ParallelRunner():
             self._last_results_obj = results_obj
         if sharing_matrix == None:
             sharing_matrix = self._sharing_matrix
-        for evl, req, par in sharing_matrix:
+        
+        for idx,(evl,req,par) in enumerate(sharing_matrix):
             x, y = self._cross_evaluation(evl, req, par)
-            self.optim_list[evl].update(x, y)
+            if idx==0:
+                # initialisation
+                prev_evl = evl
+                x_stack = np.atleast_2d(x)
+                y_stack = np.atleast_2d(y)
+            else:
+                if evl==prev_evl:
+                    x_stack = np.vstack((x_stack,x))
+                    y_stack = np.vstack((y_stack,y))
+                else:
+                    self.optim_list[prev_evl].update(x_stack, y_stack)
+                    prev_evl = evl
+                    x_stack = np.atleast_2d(x)
+                    y_stack = np.atleast_2d(y)
+        # clean-up (if this isn't here the last optim won't ever get updated)
+        self.optim_list[prev_evl].update(x_stack, y_stack)
+
     
     def shot_noise(self, x_new, nb_trials = 8):
         """

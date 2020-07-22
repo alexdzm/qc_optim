@@ -368,7 +368,7 @@ def get_best_from_bo(bo):
 
 def gen_res(bo):
     """ Generate a dictionary from a BO object to be stored"""
-    (x_obs, y_obs), (x_pred, y_pred) = bo.get_best()
+    (x_obs, y_obs), (x_pred, y_pred) = get_best_from_bo(bo)
     res = {'x_obs':x_obs, 
            'x_pred':x_pred, 
            'y_obs':y_obs, 
