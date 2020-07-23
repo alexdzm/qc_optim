@@ -678,6 +678,68 @@ class GraphCyclPauliCost(Cost):
 
 
 
+class GraphCyclReducedPauliCost(Cost):
+    """ A N-qubit Cyclical graph has edges = [[1,2],[2,3],...,[N-1,N],[N,1]]
+    Cost = fidelity, estimated based on the expected values of the N-fold Pauli 
+    operators (e.g. 'XXY'), reduces the number of measurements to (near) minimal
+    commuting set
+    """   
+    # Hardcoded list of measurements settings for Cyclical graph states of 
+    #different sizes {'nb_qubits':(meas_strings, weights)}, wehere the measurement 
+    # string is a list of Pauli operators and the weights correspond to the 
+    # decomposition of the target state in the Pauli tensor basis (up to a constant 1/dim)
+    # It could be automated to deal with arbitrary size state
+    _CYCLICAL_PAULI_DECOMP = {
+    '2':(
+            ['1x','x1','xx'], 
+            np.array([1,1,1])
+            ),
+    '3':(
+            ['1yy','xxx','xzz','y1y','yy1','zxz','zzx'], 
+            np.array([1,-1,1,1,1,1,1])
+            ),
+    '4':( 
+            ['1x1x','1yxy','1zxz','x1x1','xxxx','xy1y','xz1z','y1yx','yxy1','yyzz',
+             'yzzy','z1zx','zxz1','zyyz','zzyy'],
+            np.array([1,-1,1,1,1,-1,1,-1,-1,1,1,1,1,1,1])
+            ),
+    '5':( 
+            ['11zxz','1x1yy','1xzzx','1yxxy','1yy1x','1zxz1','1zyyz','x1xzz','x1yy1',
+             'xxxxx','xxy1y','xy1yx','xyzzy','xz11z','xzzx1','y1x1y','y1yxx','yxxy1',
+             'yxyzz','yy1x1','yyz1z','yz1zy','yzzyx','z11zx','z1zyy','zx1xz','zxz11',
+             'zyxyz','zyyz1','zzx1x','zzyxy'],
+            np.array([1,1,1,1,1,1,1,1,1,-1,1,1,-1,1,1,1,1,1,-1,1,1,1,-1,1,1,1,1,-1,1,1,-1])
+            ),
+    '6':( 
+            ['111zxz','11zxz1','11zyyz','1x1x1x','1x1yxy','1xz1zx','1xzzyy','1yxxxy',
+             '1yxy1x','1yy1yy','1yyzzx','1zx1xz','1zxz11','1zyxyz','1zyyz1','x1x1x1',
+             'x1xz1z','x1yxy1','x1yyzz','xxxxxx','xxxy1y','xxy1yx','xxyzzy','xy1x1y',
+             'xy1yxx','xyz1zy','xyzzyx','xz111z','xz1zx1','xzzxzz','xzzyy1','y1x1yx',
+             'y1xzzy','y1yxxx','y1yy1y','yxxxy1','yxxyzz','yxy1x1','yxyz1z','yy1xzz',
+             'yy1yy1','yyz11z','yyzzx1','yz11zy','yz1zyx','yzzx1y','yzzyxx','z111zx',
+             'z11zyy','z1zx1x','z1zyxy','zx1xz1','zx1yyz','zxz111','zxzzxz','zyxxyz',
+             'zyxyz1','zyy1xz','zyyz11','zzx1yy','zzxzzx','zzyxxy','zzyy1x'],
+            np.array([1,1,1,1,-1,1,1,-1,-1,1,1,1,1,-1,1,1,1,-1,1,1,-1,-1,1,-1,-1,
+                      -1,1,1,1,1,1,-1,1,-1,1,-1,1,-1,-1,1,1,1,1,1,-1,1,1,1,1,1,
+                      -1,1,1,1,1,1,-1,1,1,1,1,1,1])
+            )
+        }
+        
+    def _gen_list_meas(self):
+        settings =  self._CYCLICAL_PAULI_DECOMP[str(self.nb_qubits)][0]
+        coeffs = self._CYCLICAL_PAULI_DECOMP[str(self.nb_qubits)][1] / 2**(self.nb_qubits)
+        self._commuting_measurement_settings_and_ops = reduce_commuting_meas(settings, coeffs, True)
+        return [c[0] for c in self._commuting_measurement_settings_and_ops]
+        
+    def _gen_meas_func(self):
+        """ expected parity associated to each of the measurement settings"""
+        new_settings = self._commuting_measurement_settings_and_ops
+        offset = 1/(2**(self.nb_qubits))
+        return reduce_commuting_meas_func(new_settings, offset)
+       
+
+
+
 class GraphCyclWitness1Cost(Cost):
     """ Cost function based on the construction of witnesses for genuine 
     entanglement ([guhne2005])
@@ -919,6 +981,105 @@ def expected_parity(results,indices=None):
     """
     return 2 * freq_even(results, indices=indices) - 1
 
+
+def reduce_commuting_meas(settings, coeffs = None, include_groupings = False):
+    """
+    Converts measurement string 'zz1', 'zxz' etc... to minimum set of commuting 
+    measurements (using openfermion). Note if any setting in the minimal 
+    non-commuting set has a null measurement, it is replaced by a z measurement. 
+    e.g. 'z1x' becomes 'zzx'. This is for smooth interfacing with qiskits error correction
+    
+    Parameters:
+    --------
+    strings : itterable<string>
+        set of measurements to convert
+    coeffs : itterable<number> or None - default None
+        list of coeffs for each measurement setting (if None ones(len(strings)) is used)
+    include_groupings : bool (default False)
+        if true output returns a dict mapping measurment settings to coefficients 
+        else, simply returns reduced measurement settings
+    """
+    import openfermion 
+    if type(coeffs) == type(None):
+        coeffs = np.ones(len(settings))
+    openfermion_notation_vec = []
+    for sett in settings:
+        openfermion_notation = ''
+        for qubit, pauli in enumerate(sett):
+            if pauli in 'xyz':
+                openfermion_notation += pauli.capitalize() + str(qubit) + ' '
+        openfermion_notation_vec.append(openfermion_notation[:-1])
+    
+    operator = openfermion.ops.QubitOperator('', 0)
+    for op, coef in zip(openfermion_notation_vec,coeffs):
+        operator += openfermion.ops.QubitOperator(op, coef)
+        
+    grouped = openfermion.utils.group_into_tensor_product_basis_sets(operator, np.random.randint(2*20))
+    
+    new_settings = []
+    for sett, coef in grouped.items():
+        new_sett = 'z'*len(settings[0])
+        for s in sett:
+            new_sett = new_sett[:(s[0])] + s[1].lower() + new_sett[(s[0]+1):]
+        new_settings.append((new_sett, coef))
+    if include_groupings:
+        return new_settings
+    else:
+        return [ss[0] for ss in new_settings]
+    
+
+def reduce_commuting_meas_func(new_settings, offset = 0):
+    """
+    Generates a new measurement function based on previous (non-commuting) settings,
+    based on a (near) minimum set of commuting measurements. Works at the "list of count dicts level"
+    
+    Parameters:
+    --------
+    new_settings : itterable<string><openfermion.Operator>
+        expected to be output from reduce_commuting_meas with include_groupings = True
+    offset : float
+        the returned function is offset by this amount
+    """    
+    def _relevant_qubits_from_op(op):
+        """ 
+        Returns indexes of relevant qubits in an openfermion operator input"""
+        op = op.terms
+        qubits, weights = [], []
+        for kk in op.keys():
+            if len(kk) > 0:
+                relevant_qubits = [wtf[0] for wtf in kk]
+                qubits.append(relevant_qubits)
+                weights.append(op[kk])
+        return qubits, weights
+    
+    def _gen_reduced_meas_func(counts):
+        """
+        Made to replace _gen_meas_func in Graph/Pauli cost to reduce operators"""
+        running_sum = 0
+        internal_settings = copy.deepcopy(new_settings)
+        internal_offset = copy.deepcopy(offset)
+        for ct, sett in enumerate(internal_settings):
+            idx, weights = _relevant_qubits_from_op(sett[1])
+            parity_vec_for_commuting_settings = [expected_parity(counts[ct], ii) for ii in idx]
+            running_sum += np.dot(parity_vec_for_commuting_settings, weights)
+        return running_sum + internal_offset
+    
+    return _gen_reduced_meas_func
+    
+    
+# ct+=1
+# sett = internal_settings[ct]
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
 def get_substring(string, list_indices=None):
     """ return a substring comprised of only the elements associated to the 
     list of indices
@@ -1001,6 +1162,8 @@ def bind_params(circ, param_values, param_variables, param_name = None):
     if param_name is not None:
         bound_circ = ut.prefix_to_names(bound_circ, param_name)
     return bound_circ  
+
+
 
 #======================#
 # Qiskit WPO class
@@ -1630,3 +1793,30 @@ if __name__ == '__main__':
     data = np.squeeze([(ghz_reduced(x), ghz(x)) for x in x_rands]).transpose()
     assert max(abs(data[0] - data[1])) < 0.015, "Resulst should at most differ by shotnise in the measurement funcs"
     assert ghz(X_SOL) == ghz_reduced(X_SOL), "Results should be equal"
+    
+    
+    # Testing new reduced measurement setting cost functions
+    X_SOL = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
+    ansatz = anz.AnsatzFromFunction(anz._GHZ_3qubits_6_params_cx0)
+    cst_full = GHZPauliCost(ansatz, inst)
+    cst_redu = GHZPauliCost3qubits(ansatz, inst)
+    
+    coeffs = cst_full._GHZ_PAULI_DECOMP['3'][1] / 8
+    settings = cst_full._gen_list_meas()
+    new_settings = reduce_commuting_meas(settings, coeffs, True)
+    new_cost = reduce_commuting_meas_func(new_settings, 1/8)
+    
+    counts1 = inst.execute(cst_redu.bind_params_to_meas(X_SOL)).get_counts()
+    counts2 = inst.execute(cst_redu.bind_params_to_meas(np.random.rand(6))).get_counts()
+    assert cst_redu._meas_func(counts1) == new_cost(counts1), "New cost function shoud generate the same result"
+    assert cst_redu._meas_func(counts2) == new_cost(counts2), "New cost function shoud generate the same result"
+
+    # -Testing measurement reduction for cluster state
+    ansatz = anz.AnsatzFromFunction(anz._GraphCycl_6qubits_6params)
+    cst_full = GraphCyclPauliCost(ansatz, inst)
+    cst_redu = GraphCyclReducedPauliCost(ansatz, inst)
+    x_rand = [np.pi/2 * np.random.rand(ansatz.nb_params) for i in range(8)]
+    
+    sq_diff = ((cst_full(x_rand) - cst_redu(x_rand))**2)
+    assert max(sq_diff) < 1e-4, "full pauli cost and reduced cost should agree to within shot noise ~1%"
+    
