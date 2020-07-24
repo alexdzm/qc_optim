@@ -1771,22 +1771,20 @@ if __name__ == '__main__':
         assert ghz_witness2.evaluate_cost(res) == 1.0, "For passing in results object, check the solutions are correct"
 
         
-    # Basic checks for random XY cost function (appears to be working fine)
+    #----- Basic checks for random XY cost function (appears to be working fine)
     h_field = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     h_xy = np.array([[0, .5, .5], [.5, 0, .5], [.5, .5, 0]])
     ansatz = anz.AnsatzFromFunction(anz._GHZ_3qubits_6_params_cx0)
-    xy_cost = RandomXYCost(ansatz, inst, h_field)
+    xy_cost = RandomXYCost(ansatz, inst, h_field + h_xy)
     circs = xy_cost.bind_params_to_meas([0,0,0,0,0,0])
     res = inst.execute(circs)
-    assert xy_cost.evaluate_cost(res) == -3.0, "Field only Hamiltonian in logical 0 == -1 z-projection"
-    assert xy_cost([0,0,0,pi,pi,pi]) == 3.0, "Field only Hamiltonian in logical 0 == -1 z-projection"
-
+   
     xy_cost = RandomXYCost(ansatz, inst, h_xy)
     assert abs(xy_cost([0,0,0,0,0,0])) < 0.08, "z = -1 state should be close to zero (this may fail very randomly)" 
     assert abs(xy_cost([0,0,0,pi/2,pi/2,pi/2]) - 1) < 0.08, "XY product state state should be close to 1 (this may fail very randomly)" 
     
     
-    # Testing new ghz cost
+    #----- Testing new ghz cost
     x_rands = np.random.rand(5, 6)
     ghz = GHZPauliCost(ansatz, inst)
     ghz_reduced = GHZPauliCost3qubits(ansatz, inst)
@@ -1795,7 +1793,7 @@ if __name__ == '__main__':
     assert ghz(X_SOL) == ghz_reduced(X_SOL), "Results should be equal"
     
     
-    # Testing new reduced measurement setting cost functions
+    #----- Testing new reduced measurement setting cost functions
     X_SOL = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
     ansatz = anz.AnsatzFromFunction(anz._GHZ_3qubits_6_params_cx0)
     cst_full = GHZPauliCost(ansatz, inst)
@@ -1811,7 +1809,7 @@ if __name__ == '__main__':
     assert cst_redu._meas_func(counts1) == new_cost(counts1), "New cost function shoud generate the same result"
     assert cst_redu._meas_func(counts2) == new_cost(counts2), "New cost function shoud generate the same result"
 
-    # -Testing measurement reduction for cluster state
+    #----- Testing measurement reduction for cluster state
     ansatz = anz.AnsatzFromFunction(anz._GraphCycl_6qubits_6params)
     cst_full = GraphCyclPauliCost(ansatz, inst)
     cst_redu = GraphCyclReducedPauliCost(ansatz, inst)
@@ -1820,3 +1818,4 @@ if __name__ == '__main__':
     sq_diff = ((cst_full(x_rand) - cst_redu(x_rand))**2)
     assert max(sq_diff) < 1e-4, "full pauli cost and reduced cost should agree to within shot noise ~1%"
     
+    print('All tests passed')

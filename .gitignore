@@ -3,7 +3,9 @@
 /core/.ipynb_checkpoints
 *__pycache__
 *.pkl
-
+*.swp
+/studies/Random_XY_eigenstates.py
+studies/GHZ_all.py
 # mac finder files
 *.DS_Store 
 

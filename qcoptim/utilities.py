@@ -1189,3 +1189,4 @@ def gen_quick_noise(readout = 0.05,
     noise_model.add_all_qubit_quantum_error(cnot, ['cx'])
     noise_model.add_all_qubit_readout_error(readout)
     return noise_model
+
