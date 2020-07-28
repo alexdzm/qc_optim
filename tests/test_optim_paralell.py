@@ -11,10 +11,12 @@ import numpy as np
 import qiskit as qk
 import matplotlib.pyplot as plt
 sys.path.insert(0, '../qcoptim/')
-import qcoptim.ansatz as az
+import qcoptim.ansatz as anz
 import qcoptim.cost as cost
 import qcoptim.utilities as ut
 import qcoptim.optimisers as op
+
+from qiskit.ignis.mitigation.measurement import CompleteMeasFitter
 
 def add_reduced_domain(params, delta, domain):
     domain = list(domain)
@@ -45,10 +47,16 @@ if CHOOSE_DEVICE:
     bem.get_current_status()
     chosen_device = int(input('SELECT IBM DEVICE:'))
     bem.get_backend(chosen_device, inplace=True)
+    if chosen_device == 4:
+        noise_model = ut.gen_quick_noise(0.05, 0, 0)
+    else:
+        noise_model = None
     inst = bem.gen_instance_from_current(initial_layout=[1,3,2],
                                          nb_shots=NB_SHOTS_DEFAULT,
-                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT)
-                                         #measurement_error_mitigation_cls=qk.ignis.mitigation.measurement.CompleteMeasFitter)
+                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT,
+                                         measurement_error_mitigation_cls=CompleteMeasFitter,
+                                         noise_model=noise_model)
+    
 
 
 # ===================
@@ -58,18 +66,18 @@ x_sol = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
 x_sol_u3_2 = np.array([1.,  2.,  1.,  0.,  3.,  1.,  
                        2.,  3.,  1.,  2.,  2.,  3.,  
                        2.,  2.,  0., -0.,  2.,  3.])*pi/2
-funcs = [az._GHZ_3qubits_6_params_cx0,
-         az._GHZ_3qubits_6_params_cx1,
-         az._GHZ_3qubits_6_params_cx2,
-         az._GHZ_3qubits_6_params_cx3,
-         az._GHZ_3qubits_6_params_cx4,
-         az._GHZ_3qubits_6_params_cx5,
-         az._GHZ_3qubits_6_params_cx6,
-         az._GHZ_3qubits_6_params_cx7,
-         az._GHZ_3qubits_cx7_u3_correction]
-anz_vec = [az.AnsatzFromFunction(fun) for fun in funcs]
-anz_vec = [az.RegularU3Ansatz(3, 1, qubit_names = 'logicals')]
-cost_list = [cost.GHZPauliCost3qubits(anz, inst, invert=True) for anz in anz_vec]
+funcs = [anz._GHZ_3qubits_6_params_cx0,
+         anz._GHZ_3qubits_6_params_cx1,
+         anz._GHZ_3qubits_6_params_cx2,
+         anz._GHZ_3qubits_6_params_cx3,
+         anz._GHZ_3qubits_6_params_cx4,
+         anz._GHZ_3qubits_6_params_cx5,
+         anz._GHZ_3qubits_6_params_cx6,
+         anz._GHZ_3qubits_6_params_cx7,
+         anz._GHZ_3qubits_cx7_u3_correction]
+anz_vec = [anz.AnsatzFromFunction(fun) for fun in funcs]
+anz_vec = [anz.RegularU3Ansatz(3, 1, qubit_names = 'logicals')]
+cost_list = [cost.GHZPauliCost3qubits(az, inst, invert=True) for az in anz_vec]
 nb_params = anz_vec[0].nb_params
 cost_list = np.atleast_1d(cost_list[NB_SWAPS])
 
@@ -89,11 +97,7 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
                                 eval_init=False)
 
 bo_args['nb_iter'] = NB_ITER + NB_INIT
-bo_args['acquisition_weight'] = 2
-
-spsa_args = {'a':1, 'b':0.628, 's':0.602, 
-             't':0.101,'A':0,'domain':[(0, 2*np.pi) for i in range(anz_vec[0].nb_params)],
-             'x_init':None}
+bo_args['acquisition_weight'] = 4
 
 # ======================== /
 # Init runner classes with different methods
@@ -104,30 +108,12 @@ opt_spsa = op.MethodSPSA
 
 bo_args_list = [copy.deepcopy(bo_args) for ii in range(len(cost_list))]
 
-runner1 = op.ParallelRunner(cost_list, 
-                            opt_bo, 
-                            optimizer_args = bo_args_list,
-                            share_init = True,
-                            method = 'independent')
+runner = op.ParallelRunner(cost_list, 
+                           opt_bo, 
+                           optimizer_args = bo_args_list,
+                           share_init = True,
+                           method = 'independent')
 
-# runner2 = op.ParallelRunner(cost_list[:2], 
-#                             opt_spsa,
-#                             optimizer_args = spsa_args,
-#                             share_init = False,
-#                             method = 'independent')
-
-# runner3 = op.ParallelRunner(cost_list[:4], 
-#                             [opt_bo],
-#                             optimizer_args = bo_args,
-#                             share_init = False,
-#                             method = 'right')
-
-
-# single_bo = op.SingleBO(cst0, bo_args)
-
-# single_SPSA = op.SingleSPSA(cst0, spsa_args)
-
-runner = runner1
 
 x_new = [[x_sol, x_sol], [x_sol]]
 
@@ -153,7 +139,7 @@ runner.next_evaluation_circuits()
 print(len(runner.circs_to_exec))
 Batch.submit(runner)
 Batch.execute()
-Batch.result(runner)
+runner._last_results_obj = Batch._last_results_obj
 runner.init_optimisers()
 
 # optimizers now have new init info. 
@@ -166,8 +152,10 @@ except:
 # Run optimizer step by step
 for ii in range(NB_ITER):
     runner.next_evaluation_circuits()
-    Batch.submit_exec_res(runner)
-    runner.update()
+    Batch.submit(runner)
+    Batch.execute()
+    runner._last_results_obj = Batch._last_results_obj
+    runner.init_optimisers()    runner.update()
     try:
         print(len(runner.optim_list[0]._x_mp))
     except:

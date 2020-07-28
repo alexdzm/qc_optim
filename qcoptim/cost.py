@@ -677,125 +677,62 @@ class GraphCyclPauliCost(Cost):
         return meas_func
 
 
-
-class GraphCyclReducedPauliCost(Cost):
-    """ A N-qubit Cyclical graph has edges = [[1,2],[2,3],...,[N-1,N],[N,1]]
-    Cost = fidelity, estimated based on the expected values of the N-fold Pauli 
-    operators (e.g. 'XXY'), reduces the number of measurements to (near) minimal
-    commuting set
-    """   
-    # Hardcoded list of measurements settings for Cyclical graph states of 
-    #different sizes {'nb_qubits':(meas_strings, weights)}, wehere the measurement 
-    # string is a list of Pauli operators and the weights correspond to the 
-    # decomposition of the target state in the Pauli tensor basis (up to a constant 1/dim)
-    # It could be automated to deal with arbitrary size state
-    _CYCLICAL_PAULI_DECOMP = {
-    '2':(
-            ['1x','x1','xx'], 
-            np.array([1,1,1])
-            ),
-    '3':(
-            ['1yy','xxx','xzz','y1y','yy1','zxz','zzx'], 
-            np.array([1,-1,1,1,1,1,1])
-            ),
-    '4':( 
-            ['1x1x','1yxy','1zxz','x1x1','xxxx','xy1y','xz1z','y1yx','yxy1','yyzz',
-             'yzzy','z1zx','zxz1','zyyz','zzyy'],
-            np.array([1,-1,1,1,1,-1,1,-1,-1,1,1,1,1,1,1])
-            ),
-    '5':( 
-            ['11zxz','1x1yy','1xzzx','1yxxy','1yy1x','1zxz1','1zyyz','x1xzz','x1yy1',
-             'xxxxx','xxy1y','xy1yx','xyzzy','xz11z','xzzx1','y1x1y','y1yxx','yxxy1',
-             'yxyzz','yy1x1','yyz1z','yz1zy','yzzyx','z11zx','z1zyy','zx1xz','zxz11',
-             'zyxyz','zyyz1','zzx1x','zzyxy'],
-            np.array([1,1,1,1,1,1,1,1,1,-1,1,1,-1,1,1,1,1,1,-1,1,1,1,-1,1,1,1,1,-1,1,1,-1])
-            ),
-    '6':( 
-            ['111zxz','11zxz1','11zyyz','1x1x1x','1x1yxy','1xz1zx','1xzzyy','1yxxxy',
-             '1yxy1x','1yy1yy','1yyzzx','1zx1xz','1zxz11','1zyxyz','1zyyz1','x1x1x1',
-             'x1xz1z','x1yxy1','x1yyzz','xxxxxx','xxxy1y','xxy1yx','xxyzzy','xy1x1y',
-             'xy1yxx','xyz1zy','xyzzyx','xz111z','xz1zx1','xzzxzz','xzzyy1','y1x1yx',
-             'y1xzzy','y1yxxx','y1yy1y','yxxxy1','yxxyzz','yxy1x1','yxyz1z','yy1xzz',
-             'yy1yy1','yyz11z','yyzzx1','yz11zy','yz1zyx','yzzx1y','yzzyxx','z111zx',
-             'z11zyy','z1zx1x','z1zyxy','zx1xz1','zx1yyz','zxz111','zxzzxz','zyxxyz',
-             'zyxyz1','zyy1xz','zyyz11','zzx1yy','zzxzzx','zzyxxy','zzyy1x'],
-            np.array([1,1,1,1,-1,1,1,-1,-1,1,1,1,1,-1,1,1,1,-1,1,1,-1,-1,1,-1,-1,
-                      -1,1,1,1,1,1,-1,1,-1,1,-1,1,-1,-1,1,1,1,1,1,-1,1,1,1,1,1,
-                      -1,1,1,1,1,1,-1,1,1,1,1,1,1])
-            )
-        }
-        
-    def _gen_list_meas(self):
-        settings =  self._CYCLICAL_PAULI_DECOMP[str(self.nb_qubits)][0]
-        coeffs = self._CYCLICAL_PAULI_DECOMP[str(self.nb_qubits)][1] / 2**(self.nb_qubits)
-        self._commuting_measurement_settings_and_ops = reduce_commuting_meas(settings, coeffs, True)
-        return [c[0] for c in self._commuting_measurement_settings_and_ops]
-        
-    def _gen_meas_func(self):
-        """ expected parity associated to each of the measurement settings"""
-        new_settings = self._commuting_measurement_settings_and_ops
-        offset = 1/(2**(self.nb_qubits))
-        return reduce_commuting_meas_func(new_settings, offset)
-       
-
-
-
 class GraphCyclWitness1Cost(Cost):
-    """ Cost function based on the construction of witnesses for genuine 
+    """ Cost function based on the construction of witnesses for genuine
     entanglement ([guhne2005])
-    Stabilizer generators S_l of cyclical graph states are (for N=4 qubits) 
+    Stabilizer generators S_l of cyclical graph states are (for N=4 qubits)
         S = <XZIZ, ZXZI, IZXZ, ZIZX>
     To estimate S_1 to S_N only requires two measurement settings: XZXZ, ZXZX
-    Cost =  (S_1 - 1)/2 + Prod_l>1 [(S_l + 1)/2] 
+    Cost =  (S_1 - 1)/2 + Prod_l>1 [(S_l + 1)/2]
     !!! ONLY WORK FOR EVEN N FOR NOW !!!
     !!! PROBABLY WRONG (or at least not understood clearly) !!!
     """
     def _gen_list_meas(self):
         """ two measurement settings ['zxzx...zxz', 'xzxzx...xzx']"""
         N = self.nb_qubits
-        if (N%2): 
+        if (N%2):
             raise NotImplementedError("ATM cannot deal with odd N")
         else:
             meas_odd = "".join(['zx'] * (N//2))
             meas_even = "".join(['xz'] * (N//2))
         return [meas_odd, meas_even]
-    
+
     def _gen_meas_func(self):
         raise Warning("This is likely broken be careful")
         """ functions defining how outcome counts should be used """
         N = self.nb_qubits
-        if (N%2): 
+        if (N%2):
             raise NotImplementedError("ATM cannot deal with odd N")
         else:
-            ind_odd = [[i, i+1, i+2] for i in range(0,N-2, 2)] + [[0, N-2, N-1]]  
+            ind_odd = [[i, i+1, i+2] for i in range(0,N-2, 2)] + [[0, N-2, N-1]]
             ind_even = [[i, i+1, i+2] for i in range(1,N-2, 2)] + [[0, 1, N-1]]
             def meas_func(counts):
                 counts_odd, counts_even = counts[0], counts[1]
                 S_odd = np.array([expected_parity(counts_odd, indices=i) for i in ind_odd])
                 S_even = np.array([expected_parity(counts_even, indices=i) for i in ind_even])
-                return 0.5*(S_even[-1]-1) + np.prod((S_odd+1)/2) * np.prod((S_even[:-1]+1)/2) 
+                return 0.5*(S_even[-1]-1) + np.prod((S_odd+1)/2) * np.prod((S_even[:-1]+1)/2)
         return meas_func
 
 class GraphCyclWitness2Cost(Cost):
     """ Exactly as GraphCyclWitness1Cost except that:
-        Cost =  Sum_l[S_l] - (N-1)I """   
+        Cost =  Sum_l[S_l] - (N-1)I """
     def _gen_list_meas(self):
         """ two measurement settings ['zxzx...zxz', 'xzxzx...xzx']"""
         N = self.nb_qubits
-        if (N%2): 
+        if (N%2):
             raise NotImplementedError("ATM cannot deal with odd N")
         else:
             meas1 = "".join(['zx'] * (N//2))
             meas2 = "".join(['xz'] * (N//2))
         return [meas1, meas2]
-    
+
     def _gen_meas_func(self):
         """ functions defining how outcome counts should be used """
         N = self.nb_qubits
-        if (N%2): 
+        if (N%2):
             raise NotImplementedError("ATM cannot deal with odd N")
         else:
-            ind_odd = [[i, i+1, i+2] for i in range(0,N-2, 2)] + [[0, N-2, N-1]]  
+            ind_odd = [[i, i+1, i+2] for i in range(0,N-2, 2)] + [[0, N-2, N-1]]
             ind_even = [[i, i+1, i+2] for i in range(1,N-2, 2)] + [[0, 1, N-1]]
             def meas_func(counts):
                 counts_odd, counts_even = counts[0], counts[1]
@@ -953,17 +890,61 @@ class RandomXYCostWithZ(Cost):
                         xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[2], ii, jj)
             return field_term + xy_term
         return func
+
+
+class StateFidelityCost(Cost):
+    """
+    A general cost function that measuers the pauli decomposition for the target
+    state. Number of qubits is taken from the ansatz, and the state is 'ghz' or
+    cluster for now. Measurements are reduced to a minimal set of commuting
+    pauli strings.
+
+    TODO: Generalize to allow qutip state input?
+
+    Parameters:
+    -------------
+    state : str<'ghz' or 'cluster>'
+        the type of state to construct the fidelity of
+    ansatz : ansatz.ansatz class
+        ansatz circuit for the VQE
+    instance : qiskit.quantum instance class
+        quantum instance that transpile the measurement circuits.
+    """
+    def __init__(self, state, ansatz, instance, **args):
+        from . import pauli_decomposition
+        weights, settings = pauli_decomposition.weights_and_settings(state, ansatz.nb_qubits)
+        self._base_weights = weights
+        self._base_settings = settings
+        super().__init__(ansatz, instance, **args)
+
+
+    def _gen_list_meas(self):
+        ww, ss = self._base_weights, self._base_settings
+        if ss[0] == '1'*self.nb_qubits:
+            ss = ss[1:]
+            ww = ww[1:]
+        self._commuting_measurement_settings_and_ops = reduce_commuting_meas(ss, ww, True)
+        return [c[0] for c in self._commuting_measurement_settings_and_ops]
+
+    def _gen_meas_func(self):
+        """ expected parity associated to each of the measurement settings"""
+        new_settings = self._commuting_measurement_settings_and_ops
+        offset = 0
+        if self._base_settings[0] == '1'*self.nb_qubits:
+            offset += self._base_weights[0]
+        return reduce_commuting_meas_func(new_settings, offset)
+
 # ------------------------------------------------------
-# Functions to compute expected values based on measurement outcomes counts as 
+# Functions to compute expected values based on measurement outcomes counts as
 # returned by qiskit
 # ------------------------------------------------------
 def freq_even(count_result, indices=None):
     """ return the frequency of +1 eigenvalues:
-    The +1 e.v. case corresponds to the case where the number of 0 in the 
+    The +1 e.v. case corresponds to the case where the number of 0 in the
     outcome string is even
-    
+
     indices: list<integer>
-             if not None it allows to consider only selected elements of the 
+             if not None it allows to consider only selected elements of the
              outcome string
     """
     nb_odd, nb_even = 0, 0
@@ -1267,7 +1248,7 @@ class CostWPO(CostInterface):
             Used to resolve circuit naming
         """
         mean,std = self.evaluate_cost_and_std(
-            results=results, 
+            results=results,
             name=name
             )
         if real_part:
@@ -1283,7 +1264,7 @@ class CostWPO(CostInterface):
 
 class CrossFidelity(CostInterface):
     """
-    Cost class to implement offline CrossFidelity measurements between 
+    Cost class to implement offline CrossFidelity measurements between
     two quantum states (arxiv:1909.01282)
     """
     def __init__(
@@ -1309,8 +1290,8 @@ class CrossFidelity(CostInterface):
             future instance of CrossFidelity. This robustly ensures that
             the results objs to compare are compatible.
             If dict is passed it should be a qiskit results object that
-            has been converted to a dict using its `to_dict` method. 
-            Ideally this would have been tagged with CrossFidelity 
+            has been converted to a dict using its `to_dict` method.
+            Ideally this would have been tagged with CrossFidelity
             metadata using this classes `tag_results_metadata` method.
         seed : int, optional
             Seed used to generate random unitaries
@@ -1345,14 +1326,14 @@ class CrossFidelity(CostInterface):
         # setup subsampling
         self._subsample_size = subsample_size
         if subsample_size is not None:
-            # use same seed as generating random measurement basis for 
+            # use same seed as generating random measurement basis for
             # reproducibility
             self._subsampling_rng = np.random.default_rng(seed)
 
     @property
     def nb_random(self):
         return self._nb_random
-    
+
     @property
     def seed(self):
         return self._seed
@@ -1363,7 +1344,7 @@ class CrossFidelity(CostInterface):
 
     @comparison_results.setter
     def comparison_results(self, results):
-        """ 
+        """
         setter for comparison_results, perform validations
         """
         # check if comparison_results contains the crossfidelity_metadata
@@ -1397,23 +1378,23 @@ class CrossFidelity(CostInterface):
                         ck = hex(int(ck,2))
                     new_counts[ck] = cv
                 v['data']['counts'] = new_counts
-    
+
         self._comparison_results = results
 
     def _gen_random_measurements(self):
-        """ 
-        Creates a list of self._nb_random circuits with Haar random 
+        """
+        Creates a list of self._nb_random circuits with Haar random
         unitaries appended to measure in random basis for each qubit
 
         Returns
         -------
             quantum circuits
-                The unbound and untranspiled circuits to carry out 
+                The unbound and untranspiled circuits to carry out
                 different random measurements on each qubit
         """
-        
+
         # random state object used to generate random unitaries, using the
-        # same seed means multiple calls to this function will produce the 
+        # same seed means multiple calls to this function will produce the
         # same set of random measurements
         rand_state = np.random.default_rng(self._seed)
 
@@ -1468,15 +1449,15 @@ class CrossFidelity(CostInterface):
         return results
 
     def bind_params_to_meas(self,params=None,params_names=None):
-        """ 
-        Bind a list of parameters to named measurable circuits of the 
-        cost function 
-        
+        """
+        Bind a list of parameters to named measurable circuits of the
+        cost function
+
         Parameters
         ----------
         params: None, or 1d, 2d numpy array
-            If None the function will return the unbound measurement 
-            circuit, else it will bind each parameter to each of the 
+            If None the function will return the unbound measurement
+            circuit, else it will bind each parameter to each of the
             measurable circuits
 
         Returns
@@ -1490,7 +1471,7 @@ class CrossFidelity(CostInterface):
             params = np.atleast_2d(params)
             if type(params_names) == str:
                 params_names = [params_names]
-            if params_names is None: 
+            if params_names is None:
                 params_names = [None] * len(params)
             else:
                 assert len(params_names) == len(params)
@@ -1507,7 +1488,7 @@ class CrossFidelity(CostInterface):
             bound_circuits = []
             for p, pn in zip(params, params_names):
                 bound_circuits += bind_params(_meas_circuits, p, self.qk_vars, pn)
-        return bound_circuits   
+        return bound_circuits
 
     def evaluate_cost(
         self,
@@ -1515,15 +1496,15 @@ class CrossFidelity(CostInterface):
         name='',
         **kwargs
         ):
-        """ 
-        Calculates the cross-fidelity using two sets of qiskit results. 
+        """
+        Calculates the cross-fidelity using two sets of qiskit results.
         The variable names are chosen to match arxiv:1909.01282 as close
         as possible.
 
         NOTE: when subsampling we would ideally keep track of the circs
         that were submitted to the `execute` call and then extract those
         results elements e.g. using a `_last_subsample_set` variable. But
-        because of the way we use the Cost obj for information sharing 
+        because of the way we use the Cost obj for information sharing
         this might not always be possible. We offer a fallback strategy of
         iterating over the full set of nb_random circuits and try...except
         to see if they are in the Results obj. In this case the _nb_random
@@ -1544,7 +1525,7 @@ class CrossFidelity(CostInterface):
         """
 
         # we make it possible to instance a CrossFidelity obj without a
-        # comparison_results dict so that we can easily generate the 
+        # comparison_results dict so that we can easily generate the
         # comparison data using the same setup (e.g. seed, prefix). But
         # in that case cannote evaluate the cost.
         if self._comparison_results is None:
@@ -1560,7 +1541,7 @@ class CrossFidelity(CostInterface):
         if self._subsample_size is not None:
             _nb_random = self._subsample_size
             try:
-                # assumes this is being called directly after a call to 
+                # assumes this is being called directly after a call to
                 # `bind_params_to_meas`, which sets `self._last_subsample_set`,
                 # else the `results.get_counts` calls below will likely fail
                 unitaries_set = self._last_subsample_set
@@ -1604,7 +1585,7 @@ class CrossFidelity(CostInterface):
             # over all random unitaries
             if nb_qubits is None:
                 # get the first dict key string and find its length
-                nb_qubits = len(list(P_1_fixedU.keys())[0])    
+                nb_qubits = len(list(P_1_fixedU.keys())[0])
             assert nb_qubits==len(list(P_1_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
                 +', P_1_fixedU.keys()='+f'{P_1_fixedU.keys()}')
             assert nb_qubits==len(list(P_2_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
@@ -1623,7 +1604,7 @@ class CrossFidelity(CostInterface):
 
     @staticmethod
     def correlation_fixed_U(P_1,P_2):
-        """ 
+        """
         Carries out the inner loop calculation of the Cross-Fidelity. In
         contrast to the paper, arxiv:1909.01282, it makes sense for us to
         make the sum over sA and sA' the inner loop. So this computes the
@@ -1634,7 +1615,7 @@ class CrossFidelity(CostInterface):
         P_1 : dict (normalised counts dictionary)
             The empirical distribution for the measurments on qubit 1
             P^{(1)}_U(s_A) = Tr[ U_A \rho_1 U^\dagger_A |s_A\rangle \langle s_A| ]
-            where U is a fixed, randomly chosen unitary, and s_A is all 
+            where U is a fixed, randomly chosen unitary, and s_A is all
             possible binary strings in the computational basis
         P_2 : dict (normalised counts dictionary)
             Same for qubit 2.
@@ -1644,18 +1625,18 @@ class CrossFidelity(CostInterface):
         correlation_fixed_U : float
             Evaluation of the inner sum of the cross-fidelity
         """
-        # iterate over the elements of the computational basis (that 
+        # iterate over the elements of the computational basis (that
         # appear in the measurement results)sublimes
         correlation_fixed_U = 0
         for sA,P_1_sA in P_1.items():
             for sAprime,P_2_sAprime in P_2.items():
 
                 # add up contribution
-                hamming_distance = int(len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime)))                    
+                hamming_distance = int(len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime)))
                 correlation_fixed_U += (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
 
         return correlation_fixed_U
-        
+
 #%%
 # -------------------------------------------------------------- #
 if __name__ == '__main__':
@@ -1665,7 +1646,7 @@ if __name__ == '__main__':
     simulator = qk.Aer.get_backend('qasm_simulator')
     inst = qk.aqua.QuantumInstance(simulator, shots=8192, optimization_level=3)
     backends = [simulator]
-    
+
     for sim in backends:
         #-----#
         # Verif conventions
@@ -1673,43 +1654,43 @@ if __name__ == '__main__':
         fun_ansatz = anz._GHZ_3qubits_6_params_cx0
         ansatz = anz.AnsatzFromFunction(fun_ansatz)
         bound_circ = bind_params(ansatz.circuit, [1,2,3,4,5,6], ansatz.circuit.parameters)
-        
+
         transpiled_cir = inst.transpile(bound_circ)[0]
         m_c = gen_meas_circuits(transpiled_cir, ['zzz'])
         res = inst.execute(m_c)
         counts = res.get_counts()
-        
+
         #-----#
         # One qubit task
         #-----#
         ansatz = anz.AnsatzFromFunction(anz._1qubit_2_params_XZ)
         X_SOL = np.pi/4 * np.ones(2)
-            
+
         coeffs = np.array([0.5, -0.5, np.sqrt(1/2)])
         cost1q = OneQXYZ(ansatz, inst, coeffs = coeffs, decompose = False)
         assert np.abs(cost1q(X_SOL) - 1) < 0.01, "For this ansatz, parameters, cost function should be close to one (stat fluctuations)"
 
         cost1q = OneQXYZ(ansatz, inst, coeffs = coeffs, decompose = True)
-        assert np.all(np.abs(2*cost1q(X_SOL) - 1 -coeffs) < 0.05)  
-        
+        assert np.all(np.abs(2*cost1q(X_SOL) - 1 -coeffs) < 0.05)
+
         #-----#
         # GHZ
         #-----#
-        # Create an ansatz capable of generating a GHZ state (not the most obvious 
+        # Create an ansatz capable of generating a GHZ state (not the most obvious
         # one here) with the set of params X_SOL
         X_SOL = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
         X_LOC = np.pi/2 * np.array([1., 0., 4., 0., 3., 0.])
         X_RDM = np.random.uniform(0.0, 2*pi, size=(6,1))
-                
+
         # Verif the values of the different GHZ cost
         # Fidelity
         ansatz = anz.AnsatzFromFunction(anz._GHZ_3qubits_6_params_cx0)
         ghz_cost = GHZPauliCost(ansatz=ansatz, instance = inst)
         assert ghz_cost(X_SOL) == 1.0, "For this ansatz, parameters, cost function should be one"
         assert np.abs(ghz_cost(X_LOC) - 0.5) < 0.1, "For this ansatz and parameters, the cost function should be close to 0.5 (up to sampling error)"
-        
+
         test_batch = ghz_cost([X_SOL] * 11)
-        
+
         # Witnesses inspired cost functions: they are different compared to the fidelity
         # but get maximized only when the state is the right one
         ghz_witness1 = GHZWitness1Cost(ansatz=ansatz, instance = inst, N=3, nb_params=6)
@@ -1718,10 +1699,10 @@ if __name__ == '__main__':
 
         ghz_witness2 = GHZWitness2Cost(ansatz=ansatz, instance = inst, N=3, nb_params=6)
         assert ghz_witness2(X_SOL) == 1.0, "For this ansatz, parameters, cost function should be one"
-        assert np.abs(ghz_witness2(X_LOC) + 0.5) < 0.1, "For this ansatz and parameters, the cost function should be close to 0.31 (up to sampling error)"    
-        
-        
-        
+        assert np.abs(ghz_witness2(X_LOC) + 0.5) < 0.1, "For this ansatz and parameters, the cost function should be close to 0.31 (up to sampling error)"
+
+
+
         #-----#
         # Cyclical graph states
         #-----#
@@ -1730,35 +1711,35 @@ if __name__ == '__main__':
         X_SOL = np.pi/2 * np.ones(ansatz.nb_params) # sol of the cycl graph state for this ansatz
         X_RDM = np.array([1.70386471,1.38266762,3.4257722,5.78064,3.84102323,2.37653078])
         #X_RDM = np.random.uniform(low=0., high=2*np.pi, size=(N_params,))
-        
+
 
         graph_cost = GraphCyclPauliCost(ansatz=ansatz, instance = inst)
-        
+
         fid_opt = graph_cost(X_SOL)
         fid_rdm = graph_cost(X_RDM)
         assert fid_opt == 1.0, "For this ansatz, parameters, cost function should be one"
         assert (fid_opt-fid_rdm) > 1e-4, "For this ansatz, parameters, cost function should be one"
-        
+
         if False: # don't test the broken witness (raises warning now)
             graph_cost1 = GraphCyclWitness1Cost(ansatz=ansatz, instance = inst)
             cost1_opt = graph_cost1(X_SOL)
             cost1_rdm = graph_cost1(X_RDM)
             assert cost1_opt == 1.0, "For this ansatz, parameters, cost function should be one"
             assert  (fid_rdm - cost1_rdm) > 1e-4, "cost function1 should be lower than true fid"
-        
+
         graph_cost2 = GraphCyclWitness2Cost(ansatz=ansatz, instance = inst)
         cost2_opt = graph_cost2(X_SOL)
         cost2_rdm = graph_cost2(X_RDM)
         assert cost2_opt == 1.0, "For this ansatz, parameters, cost function should be one"
         assert  (fid_rdm - cost2_rdm) > 1e-4, "cost function should be lower than true fid"
-        
+
         graph_cost2full = GraphCyclWitness2FullCost(ansatz=ansatz, instance = inst)
         cost2full_opt = graph_cost2full(X_SOL)
         cost2full_rdm = graph_cost2full(X_RDM)
         assert cost2full_opt == 1.0, "For this ansatz, parameters, cost function should be one"
         assert  (fid_rdm - cost2_rdm) > 1e-4, "cost function should be lower than true fid"
         assert  np.abs(cost2full_rdm - cost2_rdm) < 0.1, "both cost function should be closed"
-        
+
         X_SOL = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
         circs0 = ghz_cost.meas_circuits
         circs1 = ghz_witness2.meas_circuits
@@ -1766,11 +1747,11 @@ if __name__ == '__main__':
         circs1 = bind_params(circs1, X_SOL, ghz_witness2.qk_vars)
         circs = circs0 + circs1
         res = inst.execute(circs, had_transpiled=True)
-        
+
         assert ghz_cost.evaluate_cost(res) == 1.0, "For passing in results object, check the solutions are correct"
         assert ghz_witness2.evaluate_cost(res) == 1.0, "For passing in results object, check the solutions are correct"
 
-        
+
     #----- Basic checks for random XY cost function (appears to be working fine)
     h_field = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     h_xy = np.array([[0, .5, .5], [.5, 0, .5], [.5, .5, 0]])
@@ -1778,12 +1759,12 @@ if __name__ == '__main__':
     xy_cost = RandomXYCost(ansatz, inst, h_field + h_xy)
     circs = xy_cost.bind_params_to_meas([0,0,0,0,0,0])
     res = inst.execute(circs)
-   
+
     xy_cost = RandomXYCost(ansatz, inst, h_xy)
-    assert abs(xy_cost([0,0,0,0,0,0])) < 0.08, "z = -1 state should be close to zero (this may fail very randomly)" 
-    assert abs(xy_cost([0,0,0,pi/2,pi/2,pi/2]) - 1) < 0.08, "XY product state state should be close to 1 (this may fail very randomly)" 
-    
-    
+    assert abs(xy_cost([0,0,0,0,0,0])) < 0.08, "z = -1 state should be close to zero (this may fail very randomly)"
+    assert abs(xy_cost([0,0,0,pi/2,pi/2,pi/2]) - 1) < 0.08, "XY product state state should be close to 1 (this may fail very randomly)"
+
+
     #----- Testing new ghz cost
     x_rands = np.random.rand(5, 6)
     ghz = GHZPauliCost(ansatz, inst)
@@ -1791,19 +1772,19 @@ if __name__ == '__main__':
     data = np.squeeze([(ghz_reduced(x), ghz(x)) for x in x_rands]).transpose()
     assert max(abs(data[0] - data[1])) < 0.015, "Resulst should at most differ by shotnise in the measurement funcs"
     assert ghz(X_SOL) == ghz_reduced(X_SOL), "Results should be equal"
-    
-    
+
+
     #----- Testing new reduced measurement setting cost functions
     X_SOL = np.pi/2 * np.array([1.,1.,2.,1.,1.,1.])
     ansatz = anz.AnsatzFromFunction(anz._GHZ_3qubits_6_params_cx0)
     cst_full = GHZPauliCost(ansatz, inst)
     cst_redu = GHZPauliCost3qubits(ansatz, inst)
-    
+
     coeffs = cst_full._GHZ_PAULI_DECOMP['3'][1] / 8
     settings = cst_full._gen_list_meas()
     new_settings = reduce_commuting_meas(settings, coeffs, True)
     new_cost = reduce_commuting_meas_func(new_settings, 1/8)
-    
+
     counts1 = inst.execute(cst_redu.bind_params_to_meas(X_SOL)).get_counts()
     counts2 = inst.execute(cst_redu.bind_params_to_meas(np.random.rand(6))).get_counts()
     assert cst_redu._meas_func(counts1) == new_cost(counts1), "New cost function shoud generate the same result"
@@ -1814,8 +1795,8 @@ if __name__ == '__main__':
     cst_full = GraphCyclPauliCost(ansatz, inst)
     cst_redu = GraphCyclReducedPauliCost(ansatz, inst)
     x_rand = [np.pi/2 * np.random.rand(ansatz.nb_params) for i in range(8)]
-    
+
     sq_diff = ((cst_full(x_rand) - cst_redu(x_rand))**2)
     assert max(sq_diff) < 1e-4, "full pauli cost and reduced cost should agree to within shot noise ~1%"
-    
+
     print('All tests passed')

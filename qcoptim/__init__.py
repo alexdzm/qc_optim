@@ -4,3 +4,4 @@ from . import ansatz
 from . import cost
 from . import optimisers
 from . import utilities
+from . import pauli_decomposition

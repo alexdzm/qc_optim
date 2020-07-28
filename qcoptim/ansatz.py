@@ -38,6 +38,7 @@ import random
 
 import qiskit as qk
 import numpy as np
+from . import utilities as ut
 
 class AnsatzInterface(metaclass=abc.ABCMeta):
     """Interface for a parameterised ansatz. Specifies an object that must have five
@@ -156,6 +157,57 @@ class AnsatzFromFunction(AnsatzInterface):
             reordered.append(di[str(ii)])
         self._params = reordered
 
+    @property
+    def depth(self):
+        return self._depth
+
+    @property
+    def circuit(self):
+        return self._circuit
+
+    @property
+    def params(self):
+        return self._params
+
+    @property
+    def nb_qubits(self):
+        return self._nb_qubits
+
+    @property
+    def nb_params(self):
+        return self._nb_params
+
+
+class AnsatzFromCircuit(AnsatzInterface):
+    """
+    Returns instance conforming to AnsatzInterface from a single parameterised
+    circut. Parameters are striped and stored as ordered list (instead of a set)
+    
+    Parameters:
+    -------------
+    circuit : qk.QuantumCircit instance
+        the quantum circuit that is used from the ansatz"""
+    def __init__(self, circuit):
+        self._nb_params = len(circuit.parameters)
+        self._circuit = circuit
+        self._params = list(circuit.parameters)
+        self._nb_qubits = circuit.num_qubits
+        self._depth = circuit.depth()
+    
+        def _reorder_params(params):
+            """ Probably useless, but ensures ordred list of params (careful when loading from pkl files)"""
+            names = [p.name.split('R')[1] for p in params]
+            di = dict(zip(names, params))
+            reordered = []
+            for ii in range(len(params)):
+                reordered.append(di[str(ii)])
+            return reordered
+        
+        if self._params[0].name[0] == 'R':
+            self._params = _reorder_params(self._params)
+        else:
+            raise Warning("Ordering of circuit parameters may not be consistent with your expectation. Check self.params to make sure the ordered list looks right.")
+        
     @property
     def depth(self):
         return self._depth
@@ -829,6 +881,8 @@ def _GHZ_3qubits_cx7_u3_correction(params, barriers = False):
     c.rz(params[10], 1)
     c.rz(params[11], 2)
     return c
+
+
     
 def _GraphCycl_6qubits_6params(params, barriers = False):        
     """ Returns handle to cyc6 cluster state with c-phase gates"""
@@ -994,3 +1048,136 @@ def _GraphCycl_12qubits_init_rotations(params,
     c.cz(11,0)
     if barriers: c.barrier()
     return c
+
+
+class _useful_circuits():
+    """
+    This don't do anything. It's just a place holder to generate useful
+    circuits and ansatzes without overcrowding the namespace. 
+    
+    Should probably be moved to a seperate file at some point"""
+    def __init__(self):
+        self._params_per_gate = {'u3' : 3,
+                                 'u2' : 2,
+                                 'u1' : 1,
+                                 'rx' : 1,
+                                 'ry' : 1,
+                                 'rz' : 1,
+                                 None : 0}
+    def _qk_params(self, nb_params):
+        """
+        Creates list of length nb_params of qk.Parameter objects, named R1, R2...
+        """
+        name_params = ['R'+str(i) for i in range(nb_params)]
+        params = [qk.circuit.Parameter(n) for n in name_params]
+        return params
+    
+    def _apply_ghz(self, circ):
+        """
+        Adds gates to that would produce a GHZ state given logical 0 input
+        """
+        circ.h(0)
+        [circ.cx(ii, ii+1) for ii in range(circ.num_qubits-1)]
+        return circ
+    
+    def _apply_graph(self, circ, graph = None):
+        """
+        Adds gates to that would produce a cluster state given logical 0 input
+        """
+        [circ.h(ii) for ii in range(circ.num_qubits)]
+        if graph == None:
+            graph = ut.gen_cyclic_graph(circ.num_qubits)
+        [circ.cz(q[0],q[1]) for q in graph]  
+    
+    def _apply_rotation_layer(self, circ, gate, params):
+        """
+        Applies a layer of gate parameterised by params to every qubit in circ
+
+        
+        Parameters
+        ----------
+        circ : qk.QuantumCircuit
+            Circuit to apply gate.
+        gate : str
+            u3, u2, u1, rx, ry or rz.
+        params : list<qk.Parameters objects>
+            Rotation parameters for the gates
+
+        Returns
+        -------
+        None (happens inplace)
+        """
+        di = {'u3': circ.u3,
+              'u2': circ.u2,
+              'u1': circ.u1,
+              'rx': circ.rx,
+              'ry': circ.ry,
+              'rz': circ.rz}
+        scale = self._params_per_gate[gate]
+        operation = di[gate]
+        reshaped = np.array(params).reshape(int(len(params)/scale), scale)
+        [operation(*reshaped[ii], ii) for ii in range(circ.num_qubits)]
+    
+    def GHZ_plus_rotation(self, 
+                          nb_qubits,
+                          init_rotation = None, 
+                          final_rotation = None):
+        """
+        Creates a GHZ circuit with paramaterised init and rotations
+
+        Parameters
+        ----------
+        nb_qubits : int
+            Number of qubits.
+        init_rotation : str, optional
+            type of initial rotation 'rx', 'ry', 'rz', 'u3', 'u2' and 'u1'
+        final_rotation : TYPE, optional
+            type of final rotation 'rx', 'ry', 'rz', 'u3', 'u2' and 'u1'
+
+        Returns
+        -------
+        ansatz.Ansatz instance
+        """
+        logical_qubits = qk.QuantumRegister(nb_qubits, 'logicals')
+        c = qk.QuantumCircuit(logical_qubits)
+        nb_params_ini = self._params_per_gate[init_rotation]*nb_qubits
+        nb_params_fin = self._params_per_gate[final_rotation]*nb_qubits
+        params = self._qk_params(nb_params_ini + nb_params_fin)
+        self._apply_rotation_layer(c, init_rotation, params[:nb_params_ini])
+        self._apply_ghz(c)
+        self._apply_rotation_layer(c, final_rotation, params[nb_params_ini:])
+        c.barrier()
+        return AnsatzFromCircuit(c)
+    
+    def Graph_plus_rotation(self, 
+                            nb_qubits,
+                            init_rotation = None, 
+                            final_rotation = None):
+        """
+        Creates a Graph state circuit with paramaterised init and rotations
+
+        Parameters
+        ----------
+        nb_qubits : int
+            Number of qubits.
+        init_rotation : str, optional
+            type of initial rotation 'rx', 'ry', 'rz', 'u3', 'u2' and 'u1'
+        final_rotation : TYPE, optional
+            type of final rotation 'rx', 'ry', 'rz', 'u3', 'u2' and 'u1'
+
+        Returns
+        -------
+        ansatz.Ansatz instance
+=        """
+        logical_qubits = qk.QuantumRegister(nb_qubits, 'logicals')
+        c = qk.QuantumCircuit(logical_qubits)
+        nb_params_ini = self._params_per_gate[init_rotation]*nb_qubits
+        nb_params_fin = self._params_per_gate[final_rotation]*nb_qubits
+        params = self._qk_params(nb_params_ini + nb_params_fin)
+        self._apply_rotation_layer(c, init_rotation, params[:nb_params_ini])
+        self._apply_graph(c)
+        self._apply_rotation_layer(c, final_rotation, params[nb_params_ini:])
+        c.barrier()
+        return AnsatzFromCircuit(c)
+
+sandwitch_ansatzes = _useful_circuits()

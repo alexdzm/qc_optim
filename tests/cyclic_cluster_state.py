@@ -15,23 +15,25 @@ import qcoptim.ansatz as anz
 import qcoptim.cost as cost
 import qcoptim.utilities as ut
 import qcoptim.optimisers as op
+from qiskit.ignis.mitigation.measurement import CompleteMeasFitter
 
 
 # ===================
 # Defaults
 # ===================
 pi= np.pi
-NB_SHOTS_DEFAULT = 2**11
+NB_SHOTS_DEFAULT = 2**13
 OPTIMIZATION_LEVEL_DEFAULT = 1
 TRANSPILER_SEED_DEFAULT = 10
-NB_INIT = 150
-NB_ITER = 80
+NB_INIT = 100
+NB_ITER = 100
 NB_SWAPS = 0
-NB_DELTA = pi/12
+NB_DELTA = pi/24
 CHOOSE_DEVICE = True
-SAVE_DATA = True
+SAVE_DATA = False
 SING_LAYOUT = [1, 2, 3, 8, 7, 6]
 ROCH_LAYOUT = [0, 1, 2, 3, 4, 6, 13, 12, 11, 10, 9, 5]
+ROCH_LAYOUT_6 = [0, 2, 4, 13, 11, 9]
 
 # ===================
 # Choose a backend using the custom backend manager and generate an instance
@@ -41,29 +43,27 @@ if CHOOSE_DEVICE:
     bem.get_current_status()
     chosen_device = int(input('SELECT IBM DEVICE:'))
     if chosen_device == 1:
-        initial_layout = ROCH_LAYOUT
+        initial_layout = ROCH_LAYOUT_6
+        noise_model = None
     elif chosen_device == 3:
         initial_layout = SING_LAYOUT
+        noise_model = None
     else:
         initial_layout = None
+        noise_model = ut.gen_quick_noise()
     bem.get_backend(chosen_device, inplace=True)
     inst = bem.gen_instance_from_current(initial_layout=initial_layout,
                                          nb_shots=NB_SHOTS_DEFAULT,
-                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT)
+                                         optim_lvl=OPTIMIZATION_LEVEL_DEFAULT,
+                                         noise_model=noise_model,
+                                         measurement_error_mitigation_cls=CompleteMeasFitter)
 
 
-# ===================
-# Generate ansatz and const functins (will generalize this in next update)
-# ===================
-if chosen_device == 1:
-    ansatz = anz.AnsatzFromFunction(anz._GraphCycl_12qubits_init_rotations)
-    x_sol = [0]*24
-else:
-    ansatz = anz.AnsatzFromFunction(anz._GraphCycl_6qubits_init_rotations, random_rotations=True)
-    x_sol = [0]*12
-    cost_full = cost.GraphCyclPauliCost(ansatz, inst, invert=True)
-cost_witness = [cost.GraphCyclWitness2Cost(ansatz, inst, invert=True)]
-nb_params = ansatz.nb_params
+#%%
+ans = anz.sandwitch_ansatzes.GHZ_plus_rotation(4, 'rx', 'rz')
+cst = cost.StateFidelityCost('ghz', ans, inst, invert=True)
+x_sol = [0]*ans.nb_params
+nb_params = ans.nb_params
 
 
 # ======================== /
@@ -78,11 +78,11 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
 bo_args['nb_iter'] = NB_ITER + NB_INIT
 bo_args['acquisition_weight'] = 5
 bo_args['acquisition_type'] = 'EI'
-
+bo_args['initial_design_type'] = 'latin'
 # ======================== /
 # Init runner classes with different methods
 # ======================== /
-runner = op.ParallelRunner(cost_witness,
+runner = op.ParallelRunner([cst],
                            op.MethodBO,
                            optimizer_args = bo_args,
                            share_init = True,
@@ -95,7 +95,9 @@ runner = op.ParallelRunner(cost_witness,
 Batch = ut.Batch(inst)
 runner.next_evaluation_circuits()
 print('Circs to init: {}'.format(len(runner.circs_to_exec)))
-Batch.submit_exec_res(runner)
+Batch.submit(runner)
+Batch.execute()
+runner._last_results_obj = Batch._last_results_obj
 runner.init_optimisers()
 
 
@@ -112,8 +114,10 @@ runner.update()
 # ========================= /
 for ii in range(NB_ITER):
     runner.next_evaluation_circuits()
-    Batch.submit_exec_res(runner)
-    runner.update()
+    Batch.submit(runner)
+    Batch.execute()
+    runner._last_results_obj = Batch._last_results_obj
+    runner.init_optimisers()    runner.update()
     print(len(runner.optim_list[0].optimiser.X))
 
 

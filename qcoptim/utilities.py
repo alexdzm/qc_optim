@@ -1190,3 +1190,15 @@ def gen_quick_noise(readout = 0.05,
     noise_model.add_all_qubit_readout_error(readout)
     return noise_model
 
+
+def gen_cyclic_graph(nb_nodes):
+    """
+    Returns: edges for a cyclic graph state
+    
+    Parameters:
+    -----------
+    nb_nodes : int
+        number of qubits (nodes) in the cyclic graph"""
+    graph = [[ii, ii+1] for ii in range(nb_nodes - 1)]
+    graph.append([nb_nodes-1, 0])
+    return graph

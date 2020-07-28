@@ -6,6 +6,7 @@
 *.swp
 /studies/Random_XY_eigenstates.py
 studies/GHZ_all.py
+tests/functions.py
 # mac finder files
 *.DS_Store 
 
