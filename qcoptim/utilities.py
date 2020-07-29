@@ -991,13 +991,14 @@ def get_H_chain_data(dist_vec):
     # I have experienced some crashes
     from qiskit.chemistry import QiskitChemistryError
     _retries = 50
-    atom = '; '.join(['H 0 0 {}'.format(dd) for dd in dist_vec])
+    dist_vec = np.atleast_1d(dist_vec)
+    atom = '; '.join(['H 0 0 {}'.format(dd) for dd in np.cumsum([0] + list(dist_vec))])
     for i in range(_retries):
         try:
             driver = PySCFDriver(atom=atom, 
                                  unit=UnitsType.ANGSTROM, 
                                  charge=0, 
-                                 spin=len(dist_vec)%2, 
+                                 spin=(len(dist_vec)+1)%2, 
                                  basis='sto3g',
                                 )
             molecule = driver.run()
