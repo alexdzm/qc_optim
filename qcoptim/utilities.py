@@ -1202,3 +1202,46 @@ def gen_cyclic_graph(nb_nodes):
     graph = [[ii, ii+1] for ii in range(nb_nodes - 1)]
     graph.append([nb_nodes-1, 0])
     return graph
+
+
+def gen_clifford_simulatable_params(circ, nb_points = 1):
+    qsam_str = circ.qasm()
+    known_gates = ['rx', 'ry', 'rz', 'u2', 'u3']
+    print("""Heads up: this only works for ' + ' '.join(known_gates) + ' gates \n
+          And assumes parameters are labeled R1 R2.... etc""")
+    def get_args(sub_str):
+        params = sub_str.split(')')[0][1:]
+        if ',' in params:
+            return params.split(',')
+        else:
+            return [params]
+    
+    def get_args_for_gate(qsam_str, gate):
+        sub_strs = qsam_str.split(gate)
+        list_of_args = []
+        for sub_str in sub_strs[1:]:
+            list_of_args.append(get_arg(sub_str))
+        return list_of_args
+    
+    def reduce_di(di):
+        kk_v = list(di.keys())
+        for kk in kk_v:
+            if len(di[kk]) == 0:
+                di.pop(kk)
+    
+  
+
+    di_map = {gg:get_args_for_gate(qsam_str, gg) for gg in known_gates}
+    reduce_di(di_map)
+    rand_clifford_points = -1*np.ones((nb_points, len(circ.parameters)))
+    for kk in di_map.keys():
+        for par_set in di_map[kk]:
+            for pp in par_set:
+                if 'R' in pp:
+                    param_int = int(pp[1:])
+                    if kk in 'rx ry rz':
+                        val = np.random.randint(0, 2, size = nb_points)
+                    elif kk in 'u2, u3':
+                        val = np.random.randint(0, 5, size = nb_points) /2
+                    rand_clifford_points[:,param_int] = val
+    return rand_clifford_points*np.pi

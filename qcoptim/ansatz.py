@@ -1112,11 +1112,16 @@ class _useful_circuits():
               'u1': circ.u1,
               'rx': circ.rx,
               'ry': circ.ry,
-              'rz': circ.rz}
+              'rz': circ.rz,
+              None: circ.id}
         scale = self._params_per_gate[gate]
         operation = di[gate]
-        reshaped = np.array(params).reshape(int(len(params)/scale), scale)
-        [operation(*reshaped[ii], ii) for ii in range(circ.num_qubits)]
+        if gate is not None:
+            reshaped = np.array(params).reshape(int(len(params)/scale), scale)
+            [operation(*reshaped[ii], ii) for ii in range(circ.num_qubits)]
+
+     
+            
     
     def GHZ_plus_rotation(self, 
                           nb_qubits,
