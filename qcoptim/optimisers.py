@@ -391,9 +391,11 @@ class ParallelRunner():
 
         # check the method arg is recognised
         if not method in ['independent','shared','left','right']:
-            print('method '+f'{method}'+' not recognised, please choose: '
-                +'"independent", "shared", "left" or "right".',file=sys.stderr)
-            raise ValueError
+            if 'NN' not in method:
+                if '2d' not in method:
+                    print('method '+f'{method}'+' not recognised, please choose: '
+                        +'"independent", "shared", "left" or "right".',file=sys.stderr)
+                    raise ValueError("input(method) not recognized")
         elif method in ['random1','random2']:
             raise NotImplementedError
 
@@ -490,6 +492,40 @@ class ParallelRunner():
             # sanity check
             assert len(tuples)==nb_optim*nb_optim
             return tuples
+        
+        elif 'NN' in self.method:
+            if self.method == 'NN':
+                neighbours = 1
+            else:
+                neighbours = int(self.method[2:])
+            all_to_all = [(ii, jj, jj) for ii in range(nb_optim) for jj in range(nb_optim)]
+            NN = []
+            for consumer, requester, idx in all_to_all:
+                if abs(consumer - requester) <= neighbours:
+                    NN.append((consumer, requester, idx))
+            return NN
+        
+        elif '2d' in self.method:
+            if self.method == '2d':
+                neighbours = 1
+            else:
+                neighbours = float(self.method[2:])
+            if nb_optim not in [ii**2 for ii in range(16)]:
+                raise AttributeError("2d sharing assumes square array and < 256 optimisers")
+            else:
+                square = int(np.sqrt(nb_optim))
+            
+            all_to_all = [(ii, jj, jj) for ii in range(nb_optim) for jj in range(nb_optim)]
+            NN = []
+            grid = np.arange(nb_optim).reshape(square, square)
+            for consumer, requester, idx in all_to_all:
+                req_crood = np.squeeze(np.where(grid == requester))
+                cons_coord = np.squeeze(np.where(grid == consumer))
+                dist = np.linalg.norm(req_crood - cons_coord)
+                if dist <= neighbours:
+                    NN.append((consumer, requester, idx))
+            return NN
+        
 
 
     def _gen_padding_params(self, x_new):

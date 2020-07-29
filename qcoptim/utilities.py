@@ -969,6 +969,56 @@ def get_KH2_qubit_op(Jx,Jy,Jz,v=1.):
 
     return qubitOp
 
+
+def get_H_chain_data(dist_vec):
+    """ 
+    Use the qiskit chemistry package to get the qubit Hamiltonian for LiH
+
+    Parameters
+    ----------
+    dist : float
+        The nuclear separations
+
+    Returns
+    -------
+    qubitOp : qiskit.aqua.operators.WeightedPauliOperator
+        Qiskit representation of the qubit Hamiltonian
+    shift : float
+        The ground state of the qubit Hamiltonian needs to be corrected by this amount of
+        energy to give the real physical energy. This includes the replusive energy between
+        the nuclei and the energy shift of the frozen orbitals.
+    """
+    # I have experienced some crashes
+    from qiskit.chemistry import QiskitChemistryError
+    _retries = 50
+    atom = '; '.join(['H 0 0 {}'.format(dd) for dd in dist_vec])
+    for i in range(_retries):
+        try:
+            driver = PySCFDriver(atom=atom, 
+                                 unit=UnitsType.ANGSTROM, 
+                                 charge=0, 
+                                 spin=len(dist_vec)%2, 
+                                 basis='sto3g',
+                                )
+            molecule = driver.run()
+            repulsion_energy = molecule.nuclear_repulsion_energy
+            num_particles = molecule.num_alpha + molecule.num_beta
+            num_spin_orbitals = molecule.num_orbitals * 2
+            ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
+            qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
+            qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
+            shift = repulsion_energy
+            break
+        except QiskitChemistryError:
+            if i==(_retries-1):
+                raise
+            pass
+
+
+    return qubitOp, shift
+
+
+
 def enforce_qubit_op_consistency(qubit_ops):
     """
     Run the qiskit grouped basis algorithm on the set of qubit ops
