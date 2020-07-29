@@ -1207,6 +1207,7 @@ def gen_cyclic_graph(nb_nodes):
 def gen_clifford_simulatable_params(circ, nb_points = 1):
     """
     Takes a qk.circuit and returns a list of clifford simulable points
+    It was a waste of dam time. 
 
     Parameters
     ----------
@@ -1223,6 +1224,7 @@ def gen_clifford_simulatable_params(circ, nb_points = 1):
         The ith col corresponds to the 1th parameter (R1)
 
     """
+    
     qsam_str = circ.qasm()
     known_gates = ['rx', 'ry', 'rz', 'u2', 'u3']
     print("""Heads up: this only works for ' + ' '.join(known_gates) + ' gates \n
@@ -1263,4 +1265,63 @@ def gen_clifford_simulatable_params(circ, nb_points = 1):
                     rand_clifford_points[:,param_int] = val
                 else:
                     print("Warning: there is no internal check to see if non-parameterised gates are Clifford")
+    
+    raise Warning("""Don't use this, it's a waste of fucking time! but I don't want to delete it yet \n
+                  Use ut.eval_clifford_init instead""")
+    
     return rand_clifford_points*np.pi
+
+
+
+def eval_clifford_init(ansatz,
+                       cst_constructor,
+                       init_points = 15,
+                       cst_args = {'verbose':False}, 
+                       seed = None):
+    """
+    Evaluates some initial clifford points to init a BO with easilly simulable data
+
+    Parameters
+    ----------
+    cst : cost.CostAnsatz
+        The cost function used to evaluate the data. Assumes rx, ry, rz parameters
+    init_points : int OR array
+        If int is the number of random points to calculate. Else if it's an array
+        assumed to be user spesified points to int
+    seed : int, optional
+        Seed for random number generator of clifford points. The default is None.
+
+    Returns : pair(X, Y)
+    -------
+    X : array of clifford points evaluated
+    Y : Evaluation of the cost function
+    """
+    if type(init_points) == int or type(init_points) == float:
+        np.random.seed(seed)
+        X = np.random.randint(0, 4, size=(init_points, ansatz.nb_params))* pi/2
+    else:
+        X = init_points
+        
+    
+    simulator = qk.providers.aer.StatevectorSimulator()
+    inst = qk.aqua.QuantumInstance(simulator, shots=8192, optimization_level=3)
+    cst_args['instance'] = inst
+    cst_args['ansatz'] = ansatz
+    cst = cst_constructor(**cst_args)
+    
+    
+    bat = Batch(inst)
+    names = SafeString()
+    for pt in X:
+        circs = cst.bind_params_to_meas(pt)
+        bat.submit(circs, names.gen())
+    bat.execute()
+    
+    Y = []
+    for name in names._previous_random_objects:
+        res = bat.result(name)
+        Y += [[cst.evaluate_cost(res)]]
+    return X, np.array(Y)
+        
+    
+    
