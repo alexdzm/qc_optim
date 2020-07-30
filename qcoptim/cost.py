@@ -934,6 +934,101 @@ class StateFidelityCost(Cost):
             offset += self._base_weights[0]
         return reduce_commuting_meas_func(new_settings, offset)
 
+
+class Chemistry_Cost(Cost):    
+    """
+    Generates a cost object for particular set of atoms. Is a derived class based on cost
+    """
+    
+    
+    def __init__(self, atoms, ansatz, instance, **args):
+        """
+        Create cost object using chemistry Hamiltonian. Requires openfermion to
+        get weights and pauli strings. Uses the BK encoding to strings. 
+
+        Parameters
+        ----------
+        atom : list<list<string,x,y,z>>
+            Atomic geometery in openfermion format e.g. [('H', 0, 0, 0), ('H', 0, 0, 1)]
+        ansatz : ansatz.ansatz
+            Ansatz object used to evalutate the cost functino 
+        instance : TYPE
+            Quantum instance used to compile the circuits with measurement settinsgs
+        **args : TYPE
+            Optional args passed to Super class / openfermion Hamiltonian constructor
+            See cost.Cost
+        Returns
+        -------
+        An instance that impliments CostInterface, and is callable and compatable with 
+        ParallelRunner, and Batch.
+        
+        TODO: Work out WTF happens to larger atoms and freezing out orbitals
+        """
+        from openfermion.hamiltonians import MolecularData
+        from openfermion.transforms import bravyi_kitaev, get_fermion_operator
+        from openfermionpyscf import run_pyscf
+        from qiskit.aqua.operators import Z2Symmetries
+        
+        # Converts string to openfermion geometery
+        atom_vec = atoms.split('; ')
+        open_fermion_geom = []
+        for aa in atom_vec:
+            sym = aa.split(' ')[0]
+            coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
+            open_fermion_geom.append((sym, coords))
+        basis = 'sto-3g'
+        multiplicity = 1 + len(atoms)%2
+        charge = 0
+        
+        # Construct the molecule and calc overlaps
+        molecule = MolecularData(geometry=open_fermion_geom, 
+                                  basis=basis, 
+                                  multiplicity=multiplicity,
+                                  charge=charge)
+        num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
+        molecule = run_pyscf(molecule,
+                              run_mp2=True,
+                              run_cisd=True,
+                              run_ccsd=True,
+                              run_fci=True)
+        
+        # Convert result to qubit measurement stings
+        ham = molecule.get_molecular_hamiltonian()
+        fermion_hamiltonian = get_fermion_operator(ham)
+        qubit_hamiltonian = bravyi_kitaev(fermion_hamiltonian)
+        
+        
+        weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
+        weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
+
+        weights, settings = ut.convert_to_settings_and_weights(weighted_pauli_op)
+        self._base_weights = weights
+        self._base_settings = settings
+        super().__init__(ansatz, instance, **args)
+
+    
+    def _gen_list_meas(self):
+        ww, ss = self._base_weights, self._base_settings
+        if ss[0] == '1'*self.nb_qubits:
+            ss = ss[1:]
+            ww = ww[1:]
+        self._commuting_measurement_settings_and_ops = reduce_commuting_meas(ss, ww, True)
+        return [c[0] for c in self._commuting_measurement_settings_and_ops]
+    
+    def _gen_meas_func(self):
+        """ expected parity associated to each of the measurement settings"""
+        new_settings = self._commuting_measurement_settings_and_ops
+        offset = 0
+        if self._base_settings[0] == '1'*self.nb_qubits:
+            offset += self._base_weights[0]
+        return reduce_commuting_meas_func(new_settings, offset)        
+        
+    
+
+        
+        
+        
+        
 # ------------------------------------------------------
 # Functions to compute expected values based on measurement outcomes counts as
 # returned by qiskit

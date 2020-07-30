@@ -185,6 +185,12 @@ class BackendManager():
         noise_model = noise.device.basic_device_noise_model(properties, 
                             readout_error=readout_error, gate_error=gate_error)
         return noise_model
+    
+    def quick_instance(self):
+         self.get_backend('qasm_simulator', inplace=True)
+         return self.gen_instance_from_current(nb_shots=1024,
+                                               optim_lvl=1)
+        
 
 
 
@@ -1375,4 +1381,74 @@ def eval_clifford_init(ansatz,
     return X, np.array(Y)
         
     
+def convert_wpo_and_openfermion(operator):
+    """
+    Converts between openfermion qubit hamiltonians and qiskit weighted Pauli operators
+    Uses dict decompositions in both cases and is full general. 
+    Parameters
+    ----------
+    operator : openfermion hamiltonian OR qiskit wpo
+        Input operator 
+
+    Returns
+    -------
+    operator : openfermion hamiltonian OR qiskit wpo
+
+    """
+    def _count_qubits(openfermion_operator):
+        """ Counts the number of qubits in the openfermion.operator""" 
+        nb_qubits = 0
+        for sett, coef in openfermion_operator.terms.items():
+            if len(sett)>0:
+                nb_qubits = max(nb_qubits, max([s[0] for s in sett]))
+        return nb_qubits+1
+                
     
+    
+    if str(operator.__class__) == "<class 'openfermion.ops._qubit_operator.QubitOperator'>":
+        nb_qubits = _count_qubits(operator)
+
+        iden = qk.quantum_info.Pauli.from_label('I'*nb_qubits)
+        offset = operator.terms[()]
+        qiskit_operator = WeightedPauliOperator([(offset, iden)])
+        for sett, coef in operator.terms.items():
+            new_sett = 'I'*nb_qubits
+            for s in sett:
+                new_sett = new_sett[:(s[0])] + s[1] + new_sett[(s[0]+1):]
+            pauli = qk.quantum_info.Pauli.from_label(new_sett)
+            op = WeightedPauliOperator([(coef, pauli)])
+            # print(coef)
+            # print(new_sett)
+            qiskit_operator = qiskit_operator + op
+        return qiskit_operator    
+    else:
+        raise NotImplementedError("Currently only converts 1 way, openfermion-> qiskit wpo")
+        
+
+def convert_to_settings_and_weights(operator):
+    """
+    Converts a qiskit, or openfermion qubit operator to a list of weights and settings
+
+    Parameters
+    ----------
+    operator : operator to convert
+        input operator
+
+    Returns
+    -------
+    weights : list
+        ordered list of (potentially complex) numbers that are the measurement weights for each setting
+    settings : TYPE
+        List of measurment settings in string format 'xx1xyz' etc.
+    """
+    if str(operator.__class__) == "<class 'qiskit.aqua.operators.legacy.weighted_pauli_operator.WeightedPauliOperator'>":
+        all_ops = operator.to_dict()['paulis']
+        weights = []
+        settings = []
+        for ops in all_ops:
+            ww = ops['coeff']['real'] + 1j* ops['coeff']['imag']
+            settings.append(ops['label'].lower().replace('i','1'))
+            weights.append(ww)
+        if max([w.imag for w in weights]) - min([w.imag for w in weights]) == 0:
+            weights = [w.real for w in weights]
+        return weights, settings
