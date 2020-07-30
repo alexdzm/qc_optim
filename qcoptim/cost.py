@@ -46,8 +46,6 @@ __all__ = [
     'freq_even',
     'expected_parity',
     'get_substring',
-    'append_measurements',
-    'gen_meas_circuits',
     'bind_params',
     'CostWPO',
     'CrossFidelity',
@@ -282,8 +280,8 @@ class Cost(CostInterface):
         self.main_circuit = ansatz.circuit
         self._untranspiled_main_circuit = copy.deepcopy(ansatz.circuit)
         self._qk_vars = ansatz.params
-        self._meas_circuits = gen_meas_circuits(self._untranspiled_main_circuit, 
-                                                self._list_meas)
+        self._meas_circuits = ut.gen_meas_circuits(self._untranspiled_main_circuit, 
+                                                   self._list_meas)
         self._meas_circuits = self.instance.transpile(self._meas_circuits)
         self._label_circuits()
         #--------------------------------------
@@ -1180,38 +1178,14 @@ def compare_layout(circ1, circ2):
 def append_measurements(circuit, measurements, logical_qubits=None):
     """ Append measurements to one circuit:
         TODO: Replace with Weighted pauli ops?"""
-    circ = copy.deepcopy(circuit)
-    num_creg = len(measurements.replace('1',''))
-    if num_creg > 0:
-        cr = qk.ClassicalRegister(num_creg, 'classical')
-        circ.add_register(cr)
-    if logical_qubits is None: 
-        logical_qubits = np.arange(circ.num_qubits)
-    creg_idx = 0
-    for qb_idx, basis in enumerate(measurements):
-        qubit_number = logical_qubits[qb_idx]
-        if basis == 'z':
-            circ.measure(qubit_number, creg_idx)
-            creg_idx += 1
-        elif basis == 'x':
-            circ.u2(0.0, pi, qubit_number)  # h
-            circ.measure(qubit_number, creg_idx)
-            creg_idx += 1
-        elif basis == 'y':
-            circ.u1(-np.pi / 2, qubit_number)  # sdg
-            circ.u2(0.0, pi, qubit_number)  # h
-            circ.measure(qubit_number, creg_idx)
-            creg_idx += 1
-        elif basis != '1':
-            raise NotImplementedError('measurement basis {} not understood').format(basis)
-    return circ
+    print("This has been move to utilities")
+    return None
 
 def gen_meas_circuits(main_circuit, meas_settings, logical_qubits=None):
     """ Return a list of measurable circuit based on a main circuit and
     different settings"""
-    c_list = [append_measurements(main_circuit.copy(), m, logical_qubits) 
-                  for m in meas_settings] 
-    return c_list
+    print(" This has now beed moved to utilities")
+    return None
 
 def bind_params(circ, param_values, param_variables, param_name = None):
     """ Take a list of circuits with bindable parameters and bind the values 
@@ -1751,7 +1725,7 @@ if __name__ == '__main__':
         bound_circ = bind_params(ansatz.circuit, [1,2,3,4,5,6], ansatz.circuit.parameters)
 
         transpiled_cir = inst.transpile(bound_circ)[0]
-        m_c = gen_meas_circuits(transpiled_cir, ['zzz'])
+        m_c = ut.gen_meas_circuits(transpiled_cir, ['zzz'])
         res = inst.execute(m_c)
         counts = res.get_counts()
 

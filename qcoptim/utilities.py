@@ -340,6 +340,42 @@ def quick_instance():
     return inst
 
 
+def append_measurements(circuit, measurements, logical_qubits=None):
+    """ Append measurements to one circuit:
+        TODO: Replace with Weighted pauli ops?"""
+    circ = copy.deepcopy(circuit)
+    num_creg = len(measurements.replace('1',''))
+    if num_creg > 0:
+        cr = qk.ClassicalRegister(num_creg, 'classical')
+        circ.add_register(cr)
+    if logical_qubits is None: 
+        logical_qubits = np.arange(circ.num_qubits)
+    creg_idx = 0
+    for qb_idx, basis in enumerate(measurements):
+        qubit_number = logical_qubits[qb_idx]
+        if basis == 'z':
+            circ.measure(qubit_number, creg_idx)
+            creg_idx += 1
+        elif basis == 'x':
+            circ.u2(0.0, pi, qubit_number)  # h
+            circ.measure(qubit_number, creg_idx)
+            creg_idx += 1
+        elif basis == 'y':
+            circ.u1(-np.pi / 2, qubit_number)  # sdg
+            circ.u2(0.0, pi, qubit_number)  # h
+            circ.measure(qubit_number, creg_idx)
+            creg_idx += 1
+        elif basis != '1':
+            raise NotImplementedError('measurement basis {} not understood').format(basis)
+    return circ
+
+
+def gen_meas_circuits(main_circuit, meas_settings, logical_qubits=None):
+    """ MOVE FROM COST  Return a list of measurable circuit based on a main circuit and
+    different settings"""
+    c_list = [append_measurements(main_circuit.copy(), m, logical_qubits) 
+                  for m in meas_settings] 
+    return c_list
 # ------------------------------------------------------
 # BO related utilities
 # ------------------------------------------------------
@@ -1332,10 +1368,8 @@ def gen_clifford_simulatable_params(circ, nb_points = 1):
 
 
 
-def eval_clifford_init(ansatz,
-                       cst_constructor,
+def eval_clifford_init(cost_obj,
                        init_points = 15,
-                       cst_args = {'verbose':False}, 
                        seed = None):
     """
     Evaluates some initial clifford points to init a BO with easilly simulable data
@@ -1354,33 +1388,26 @@ def eval_clifford_init(ansatz,
     -------
     X : array of clifford points evaluated
     Y : Evaluation of the cost function
+    
     """
+    
+    
     if type(init_points) == int or type(init_points) == float:
         np.random.seed(seed)
-        X = np.random.randint(0, 4, size=(init_points, ansatz.nb_params))* pi/2
+        X = np.random.randint(0, 4, size=(init_points, cost_obj.nb_params))* pi/2
     else:
         X = init_points
         
     
     simulator = qk.providers.aer.StatevectorSimulator()
-    inst = qk.aqua.QuantumInstance(simulator, shots=8192, optimization_level=3)
-    cst_args['instance'] = inst
-    cst_args['ansatz'] = ansatz
-    cst = cst_constructor(**cst_args)
+    inst = qk.aqua.QuantumInstance(simulator, shots=8192, optimization_level=0)
+    cost_obj.instance = inst    
+    
+    new_circs = gen_meas_circuits(cost_obj.ansatz.circuit, cost_obj._list_meas)
+    cost_obj._meas_circuits = inst.transpile(new_circs)
     
     
-    bat = Batch(inst)
-    names = SafeString()
-    for pt in X:
-        circs = cst.bind_params_to_meas(pt)
-        bat.submit(circs, names.gen())
-    bat.execute()
-    
-    Y = []
-    for name in names._previous_random_objects:
-        res = bat.result(name)
-        Y += [[cst.evaluate_cost(res)]]
-    return X, np.array(Y)
+    return X, cost_obj(X)
         
     
 def convert_wpo_and_openfermion(operator):
