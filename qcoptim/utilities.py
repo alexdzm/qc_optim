@@ -186,11 +186,7 @@ class BackendManager():
                             readout_error=readout_error, gate_error=gate_error)
         return noise_model
     
-    def quick_instance(self):
-         self.get_backend('qasm_simulator', inplace=True)
-         return self.gen_instance_from_current(nb_shots=1024,
-                                               optim_lvl=1)
-        
+      
 
 
 
@@ -337,6 +333,12 @@ class SafeString():
 
 # module level instance
 safe_string = SafeString()
+
+def quick_instance():
+    simulator = qk.Aer.get_backend('qasm_simulator')
+    inst = qk.aqua.QuantumInstance(simulator, shots=512, optimization_level=1)
+    return inst
+
 
 # ------------------------------------------------------
 # BO related utilities
