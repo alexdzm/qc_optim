@@ -1432,14 +1432,11 @@ def convert_wpo_and_openfermion(operator):
                 nb_qubits = max(nb_qubits, max([s[0] for s in sett]))
         return nb_qubits+1
                 
-    
-    
     if str(operator.__class__) == "<class 'openfermion.ops._qubit_operator.QubitOperator'>":
         nb_qubits = _count_qubits(operator)
 
         iden = qk.quantum_info.Pauli.from_label('I'*nb_qubits)
-        offset = operator.terms[()]
-        qiskit_operator = WeightedPauliOperator([(offset, iden)])
+        qiskit_operator = WeightedPauliOperator([(0., iden)])
         for sett, coef in operator.terms.items():
             new_sett = 'I'*nb_qubits
             for s in sett:
