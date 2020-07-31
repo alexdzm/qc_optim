@@ -933,7 +933,7 @@ class StateFidelityCost(Cost):
         return reduce_commuting_meas_func(new_settings, offset)
 
 
-class Chemistry_Cost(Cost):    
+class ChemistryCost(Cost):    
     """
     Generates a cost object for particular set of atoms. Is a derived class based on cost
     """
@@ -963,7 +963,7 @@ class Chemistry_Cost(Cost):
         TODO: Work out WTF happens to larger atoms and freezing out orbitals
         """
         from openfermion.hamiltonians import MolecularData
-        from openfermion.transforms import symmetry_conserving_bravyi_kitaev, get_fermion_operator,
+        from openfermion.transforms import symmetry_conserving_bravyi_kitaev, get_fermion_operator
         from openfermionpyscf import run_pyscf
         from qiskit.aqua.operators import Z2Symmetries
         # atom = 'H 0 0 0; H 0 0 {}; H 0 0 {}; H 0 0 {}'.format(dist, 2*dist, 3*dist)
@@ -976,7 +976,7 @@ class Chemistry_Cost(Cost):
             coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
             open_fermion_geom.append((sym, coords))
         basis = 'sto-3g'
-        multiplicity = 1+ len(atom_vec)%2
+        multiplicity = 1 + len(atom_vec)%2
         charge = 0
         
       
