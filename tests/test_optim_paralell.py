@@ -31,8 +31,8 @@ pi= np.pi
 NB_SHOTS_DEFAULT = 2048
 OPTIMIZATION_LEVEL_DEFAULT = 0
 TRANSPILER_SEED_DEFAULT = 10
-NB_INIT = 100
-NB_ITER = 50
+NB_INIT = 500
+NB_ITER = 30
 NB_SWAPS = 0
 NB_DELTA = pi/8
 CHOOSE_DEVICE = True
@@ -73,20 +73,20 @@ funcs = [anz._GHZ_3qubits_6_params_cx0,
          anz._GHZ_3qubits_6_params_cx4,
          anz._GHZ_3qubits_6_params_cx5,
          anz._GHZ_3qubits_6_params_cx6,
-         anz._GHZ_3qubits_6_params_cx7,
-         anz._GHZ_3qubits_cx7_u3_correction]
+         anz._GHZ_3qubits_6_params_cx7]
+         # anz._GHZ_3qubits_cx7_u3_correction]
 anz_vec = [anz.AnsatzFromFunction(fun) for fun in funcs]
-anz_vec = [anz.RegularU3Ansatz(3, 1, qubit_names = 'logicals')]
+# anz_vec = [anz.RegularU3Ansatz(3, 1, qubit_names = 'logicals')]
 cost_list = [cost.GHZPauliCost3qubits(az, inst, invert=True) for az in anz_vec]
 nb_params = anz_vec[0].nb_params
-cost_list = np.atleast_1d(cost_list[NB_SWAPS])
+# cost_list = np.atleast_1d(cost_list[NB_SWAPS])
 
 
 # ======================== /
 #  Default BO optim args
 # ======================== /
 domain = [(0, 2*np.pi) for i in range(nb_params)]
-domain = [x_sol_u3_2 - NB_DELTA*np.ones(nb_params), x_sol_u3_2 +  NB_DELTA*np.ones(nb_params)]
+domain = [x_sol - NB_DELTA*np.ones(nb_params), x_sol +  NB_DELTA*np.ones(nb_params)]
 domain = np.array(domain).transpose()
 if NB_SWAPS == -1:
     domain = add_reduced_domain(6, 0.1, domain)
@@ -96,7 +96,7 @@ bo_args = ut.gen_default_argsbo(f=lambda x: .5,
                                 nb_init=NB_INIT,
                                 eval_init=False)
 
-bo_args['nb_iter'] = NB_ITER + NB_INIT
+bo_args['nb_iter'] = NB_ITER*len(cost_list) + NB_INIT
 bo_args['acquisition_weight'] = 4
 
 # ======================== /
@@ -155,7 +155,8 @@ for ii in range(NB_ITER):
     Batch.submit(runner)
     Batch.execute()
     runner._last_results_obj = Batch._last_results_obj
-    runner.init_optimisers()    runner.update()
+    runner.init_optimisers()    
+    runner.update()
     try:
         print(len(runner.optim_list[0]._x_mp))
     except:

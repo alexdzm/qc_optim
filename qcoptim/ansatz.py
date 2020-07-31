@@ -228,6 +228,55 @@ class AnsatzFromCircuit(AnsatzInterface):
     def nb_params(self):
         return self._nb_params
 
+
+
+class AnsatzFromQasm(AnsatzFromCircuit):
+    """
+    Returns ansatz class construted from a qasm object (uses AnsatzFromCircuit
+    as base once circuit is created)
+    """
+    def __init__(self, qsam, parameterised = None):
+        """
+        Creates ansatz. For now only assumes rx, ry and rz gates are parameterised
+       
+        Parameters
+        ----------
+        qsam : string
+            Qasm notation string (assumed qiskit type).
+            
+        parameterised : list<bool> (default none)
+            Bool vector of which gates to parameterised, if None assumes all 
+            rx, ry, rz gates will be converted to parameterised gates. 
+
+        Returns
+        -------
+        instance of ansatz object
+        """
+        raise NotImplementedError("Doesn't work without alistairs code")
+        qasm_gates = ut.gates_from_qasm() # code not there yet
+        nb_r_gates = get_r_gates(qasm_gates) # to write - get number of rotation gates
+        nb_qubits = qasm_gates['n']
+        if parameterised == None:
+            parameterised = [True] * nb_r_gates
+            
+        ct = [], 0
+        c = qk.QuantumCircuit(qk.QuantumRegister(nb_qubits, 'logicals'))
+        for gate in qasm_gates:
+            if gate['gate'] in 'rx ry rz' and parameterised[ct] == True:
+                p = qk.circuit.Parameter('R' + str(ct))
+                qubit = gate['qubit']
+                c.gate(p, qubit)
+                ct+=1
+            else:
+                p = gate['params']
+                q = gate['qubits']
+                c.gate(*p, *q)
+        super().__init__(c)
+       
+
+
+
+
 class RandomAnsatz(BaseAnsatz):
     """ """
 
