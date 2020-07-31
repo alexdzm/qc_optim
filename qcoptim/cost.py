@@ -998,7 +998,8 @@ class Chemistry_Cost(Cost):
         
         weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
         weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
-
+        self._qk_wpo = weighted_pauli_op
+        self._of_wpo = qubit_hamiltonian
         weights, settings = ut.convert_to_settings_and_weights(weighted_pauli_op)
         self._base_weights = weights
         self._base_settings = settings
