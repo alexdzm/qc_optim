@@ -975,9 +975,10 @@ class Chemistry_Cost(Cost):
             coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
             open_fermion_geom.append((sym, coords))
         basis = 'sto-3g'
-        multiplicity = 1 + len(atoms)%2
+        multiplicity = 1+ len(atom_vec)%2
         charge = 0
         
+      
         # Construct the molecule and calc overlaps
         molecule = MolecularData(geometry=open_fermion_geom, 
                                   basis=basis, 
@@ -989,6 +990,7 @@ class Chemistry_Cost(Cost):
                               run_cisd=True,
                               run_ccsd=True,
                               run_fci=True)
+
         
         # Convert result to qubit measurement stings
         ham = molecule.get_molecular_hamiltonian()
@@ -996,10 +998,12 @@ class Chemistry_Cost(Cost):
         qubit_hamiltonian = bravyi_kitaev(fermion_hamiltonian)
         
         
+        
         weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
         weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
         self._qk_wpo = weighted_pauli_op
         self._of_wpo = qubit_hamiltonian
+        self._min_energy = molecule.hf_energy
         weights, settings = ut.convert_to_settings_and_weights(weighted_pauli_op)
         self._base_weights = weights
         self._base_settings = settings
