@@ -962,8 +962,12 @@ class ChemistryCost(Cost):
         
         TODO: Work out WTF happens to larger atoms and freezing out orbitals
         """
-        from openfermion.hamiltonians import MolecularData
-        from openfermion.transforms import symmetry_conserving_bravyi_kitaev, get_fermion_operator
+        from openfermion import (
+            MolecularData,
+            bravyi_kitaev, 
+            symmetry_conserving_bravyi_kitaev, 
+            get_fermion_operator
+        )
         from openfermionpyscf import run_pyscf
         from qiskit.aqua.operators import Z2Symmetries
         # atom = 'H 0 0 0; H 0 0 {}; H 0 0 {}; H 0 0 {}'.format(dist, 2*dist, 3*dist)
@@ -981,27 +985,34 @@ class ChemistryCost(Cost):
         
       
         # Construct the molecule and calc overlaps
-        molecule = MolecularData(geometry=open_fermion_geom, 
-                                  basis=basis, 
-                                  multiplicity=multiplicity,
-                                  charge=charge)
-        num_particles = molecule.n_electrons
-        molecule = run_pyscf(molecule)
-                              # run_mp2=True,
-                              # run_cisd=True,
-                              # run_ccsd=True,
-                              # run_fci=True)
-
+        molecule = MolecularData(
+            geometry=open_fermion_geom, 
+            basis=basis, 
+            multiplicity=multiplicity,
+            charge=charge,
+        )
+        num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
+        molecule = run_pyscf(
+            molecule,
+            run_mp2=True,
+            run_cisd=True,
+            run_ccsd=True,
+            run_fci=True,
+        )
+        self._of_molecule = molecule
         
         # Convert result to qubit measurement stings
         ham = molecule.get_molecular_hamiltonian()
         fermion_hamiltonian = get_fermion_operator(ham)
-        qubit_hamiltonian = symmetry_conserving_bravyi_kitaev(fermion_hamiltonian, 2*molecule.n_orbitals,num_particles)
-        
-
+        #qubit_hamiltonian = bravyi_kitaev(fermion_hamiltonian)
+        qubit_hamiltonian = symmetry_conserving_bravyi_kitaev(
+            fermion_hamiltonian,
+            active_orbitals=2*molecule.n_orbitals,
+            active_fermions=molecule.get_n_alpha_electrons()+molecule.get_n_beta_electrons()
+        )
         
         weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
-        # weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
+        #weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
         self._qk_wpo = weighted_pauli_op
         self._of_wpo = qubit_hamiltonian
         self._min_energy = molecule.hf_energy
