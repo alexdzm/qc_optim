@@ -1256,7 +1256,8 @@ def _all_keys(di_in, level = ''):
             _all_keys(di_in[key], level=level+'>')
 
 
-def gen_quick_noise(readout = 0.05,
+def gen_quick_noise(kind = 'random',
+                    readout = 0.05,
                     cnot = 0.02,
                     gate = 0.001):
     """
@@ -1265,6 +1266,8 @@ def gen_quick_noise(readout = 0.05,
     
     Parameters
     ------
+    kind : str = random or biased
+        type of readout error. Can spesify args seperately, but causes biased measurement error. 
     readout : float [0,1] (default 0.05)
         readout error probability
     cnot : float [0,1] (default 0.2)
@@ -1275,10 +1278,15 @@ def gen_quick_noise(readout = 0.05,
 
     
     # Error probabilities for 1 and 2 qubit gates, and readout
-    gate = qk.providers.aer.noise.depolarizing_error(gate, 1)
-    cnot = qk.providers.aer.noise.depolarizing_error(cnot, 2)
-    readout = [[1-readout, readout], [readout, 1-readout]]
-    
+    if kind == 'random':
+        gate = qk.providers.aer.noise.depolarizing_error(gate, 1)
+        cnot = qk.providers.aer.noise.depolarizing_error(cnot, 2)
+        readout = [[1-readout, readout], [readout, 1-readout]]
+    elif kind == 'biased':
+        gate = qk.providers.aer.noise.depolarizing_error(gate, 1)
+        cnot = qk.providers.aer.noise.depolarizing_error(cnot, 2)
+        readout = [[1-readout, readout], [0, 1]]
+        
     # Add errors to noise model
     noise_model.add_all_qubit_quantum_error(gate, ['u1', 'u2', 'u3'])
     noise_model.add_all_qubit_quantum_error(cnot, ['cx'])
@@ -1478,3 +1486,15 @@ def convert_to_settings_and_weights(operator):
         if max([w.imag for w in weights]) - min([w.imag for w in weights]) == 0:
             weights = [w.real for w in weights]
         return weights, settings
+
+
+    if str(operator.__class__) == "<class 'openfermion.ops._qubit_operator.QubitOperator'>":
+        def _count_qubits(openfermion_operator):
+            """ Counts the number of qubits in the openfermion.operator""" 
+            nb_qubits = 0
+            for sett, coef in openfermion_operator.terms.items():
+                if len(sett)>0:
+                    nb_qubits = max(nb_qubits, max([s[0] for s in sett]))
+            return nb_qubits+1
+        
+        nb_qubits = _count_qubits(operator)
