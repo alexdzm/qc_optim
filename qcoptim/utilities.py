@@ -741,9 +741,9 @@ class Results():
 # Qiskit WPO related helper functions
 # ------------------------------------------------------
 
-def get_H2_data(dist):
+def get_H2_qubit_op(dist):
     """ 
-    Use the qiskit chemistry package to get the qubit Hamiltonian for LiH
+    Use the qiskit chemistry package to get the qubit Hamiltonian for H2
 
     Parameters
     ----------
@@ -753,11 +753,8 @@ def get_H2_data(dist):
     Returns
     -------
     qubitOp : qiskit.aqua.operators.WeightedPauliOperator
-        Qiskit representation of the qubit Hamiltonian
-    shift : float
-        The ground state of the qubit Hamiltonian needs to be corrected by this amount of
-        energy to give the real physical energy. This includes the replusive energy between
-        the nuclei and the energy shift of the frozen orbitals.
+        Qiskit representation of the qubit Hamiltonian, energy shifts are
+        incorporated into the identity string of the qubit Hamiltonian
     """
     # I have experienced some crashes
     from qiskit.chemistry import QiskitChemistryError
@@ -777,31 +774,18 @@ def get_H2_data(dist):
             ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
             qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
             qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
-            shift = repulsion_energy
             break
         except QiskitChemistryError:
             if i==(_retries-1):
                 raise
             pass
 
+    # add nuclear repulsion energy onto identity string
+    qubitOp = qubitOp + WeightedPauliOperator([[repulsion_energy,Pauli(label='I'*qubitOp.num_qubits)]])
 
-    return qubitOp, shift
-
-def get_H2_qubit_op(dist):
-    """
-    Wrapper around get_H2_data to only return the qubit operators
-    """
-    qubitOp, shift = get_H2_data(dist)
     return qubitOp
 
-def get_H2_shift(dist):
-    """
-    Wrapper around get_H2_data to only return the energy shift
-    """
-    qubitOp, shift = get_H2_data(dist)
-    return shift
-
-def get_LiH_data(dist):
+def get_LiH_qubit_op(dist):
     """ 
     Use the qiskit chemistry package to get the qubit Hamiltonian for LiH
 
@@ -813,11 +797,8 @@ def get_LiH_data(dist):
     Returns
     -------
     qubitOp : qiskit.aqua.operators.WeightedPauliOperator
-        Qiskit representation of the qubit Hamiltonian
-    shift : float
-        The ground state of the qubit Hamiltonian needs to be corrected by this amount of
-        energy to give the real physical energy. This includes the replusive energy between
-        the nuclei and the energy shift of the frozen orbitals.
+        Qiskit representation of the qubit Hamiltonian, energy shifts are
+        incorporated into the identity string of the qubit Hamiltonian
     """
     # I have experienced some crashes
     from qiskit.chemistry import QiskitChemistryError
@@ -857,21 +838,10 @@ def get_LiH_data(dist):
                 raise
             pass
 
-    return qubitOp, shift
+    # add energy shifts onto identity string
+    qubitOp = qubitOp + WeightedPauliOperator([[shift,Pauli(label='I'*qubitOp.num_qubits)]])
 
-def get_LiH_qubit_op(dist):
-    """
-    Wrapper around get_LiH_data to only return the qubit operators
-    """
-    qubitOp, shift = get_LiH_data(dist)
     return qubitOp
-
-def get_LiH_shift(dist):
-    """
-    Wrapper around get_LiH_data to only return the energy shift
-    """
-    qubitOp, shift = get_LiH_data(dist)
-    return shift
 
 def get_TFIM_qubit_op(
     N,
@@ -1014,7 +984,7 @@ def get_KH2_qubit_op(Jx,Jy,Jz,v=1.):
     return qubitOp
 
 
-def get_H_chain_data(dist_vec):
+def get_H_chain_qubit_op(dist_vec):
     """ 
     Use the qiskit chemistry package to get the qubit Hamiltonian for LiH
 
@@ -1052,15 +1022,16 @@ def get_H_chain_data(dist_vec):
             ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
             qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
             qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
-            shift = repulsion_energy
             break
         except QiskitChemistryError:
             if i==(_retries-1):
                 raise
             pass
 
+    # add nuclear repulsion energy onto identity string
+    qubitOp = qubitOp + WeightedPauliOperator([[repulsion_energy,Pauli(label='I'*qubitOp.num_qubits)]])
 
-    return qubitOp, shift
+    return qubitOp
 
 
 
@@ -1440,6 +1411,9 @@ def convert_wpo_and_openfermion(operator):
                 nb_qubits = max(nb_qubits, max([s[0] for s in sett]))
         return nb_qubits+1
                 
+    # (commented out version is for updated git version of openfermion)
+    # import openfermion
+    # if type(operator) is openfermion.ops.operators.qubit_operator.QubitOperator:
     if str(operator.__class__) == "<class 'openfermion.ops._qubit_operator.QubitOperator'>":
         nb_qubits = _count_qubits(operator)
 
