@@ -130,7 +130,7 @@ class TrivialAnsatz(BaseAnsatz):
 class AnsatzFromFunction(AnsatzInterface):
     """ Returns an instance of the GHZ parameterized class"""
     def __init__(self, ansatz_function, x_sol = None, **kwargs):
-        self.x_sol = x_sol
+        self._x_sol = x_sol
         self._nb_params = count_params_from_func(ansatz_function)
         self._params = self._generate_params()
         self._circuit = self._generate_circuit(ansatz_function, **kwargs)
@@ -235,7 +235,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
     Returns ansatz class construted from a qasm object (uses AnsatzFromCircuit
     as base once circuit is created)
     """
-    def __init__(self, qsam, parameterised = None):
+    def __init__(self, qasm, parameterised = None):
         """
         Creates ansatz. For now only assumes rx, ry and rz gates are parameterised
        
@@ -252,25 +252,39 @@ class AnsatzFromQasm(AnsatzFromCircuit):
         -------
         instance of ansatz object
         """
-        raise NotImplementedError("Doesn't work without alistairs code")
-        qasm_gates = ut.gates_from_qasm() # code not there yet
-        nb_r_gates = get_r_gates(qasm_gates) # to write - get number of rotation gates
-        nb_qubits = qasm_gates['n']
+        qasm = _parse_qasm_qk(qasm)
+        qasm_gates = qasm['gates'] # code not there yet
+        nb_r_gates = qasm['n_gates'] # to write - get number of rotation gates
+        nb_qubits = qasm['n']
         if parameterised == None:
             parameterised = [True] * nb_r_gates
             
-        ct = [], 0
+        ct, param_ct, x_sol = 0, 0, []
         c = qk.QuantumCircuit(qk.QuantumRegister(nb_qubits, 'logicals'))
+        circ = {'rx':c.rx,
+                'ry':c.ry,
+                'rz':c.rz,
+                'cx':c.cx,
+                'cz':c.cz} # Should probably make this a function
         for gate in qasm_gates:
-            if gate['gate'] in 'rx ry rz' and parameterised[ct] == True:
-                p = qk.circuit.Parameter('R' + str(ct))
-                qubit = gate['qubit']
-                c.gate(p, qubit)
-                ct+=1
+            if gate[0] in 'rx ry rz' and parameterised[ct] == True:
+                p = qk.circuit.Parameter('R' + str(param_ct))
+                q = int(gate[2].split('[')[1].split(']')[0])
+                circ[gate[0]](p, q)
+                x_sol.append(float(gate[1]))
+                param_ct+=1
+            elif gate[0] in 'rx ry rz':
+                p = gate[1]
+                q = int(gate[2].split('[')[1].split(']')[0])
+                circ[gate[0]](p,q)
+            elif gate[0] in 'cx cz':                
+                q1 = int(gate[1].split('[')[1].split(']')[0])
+                q2 = int(gate[2].split('[')[1].split(']')[0])
+                circ[gate[0]](q1, q2)
             else:
-                p = gate['params']
-                q = gate['qubits']
-                c.gate(*p, *q)
+                raise NotImplementedError("Cannot handle u1,u2 or u3 gates yet")
+            ct+=1
+        self._x_sol = x_sol
         super().__init__(c)
        
 
@@ -1235,3 +1249,47 @@ class _useful_circuits():
         return AnsatzFromCircuit(c)
 
 sandwitch_ansatzes = _useful_circuits()
+
+
+
+def _parse_qasm_qk(qasm):
+    """
+    FUNCTION WRITTEN BY ALISTAIR
+    Parse qasm string of a circuit into a more manageable format (currently
+    doesn't support give measurements).
+
+    Parameters
+    ----------
+    qasm : string
+        qasm string in qiskit format E.G.
+    'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nrx(pi/2) q[0];\nrz(pi/2) q[0];
+    \nrx(pi/2) q[1];\nrz(3.1399274) q[1];\nrx(2.0257901) q[2];\nrz(1.2246784) q[2];
+    \nrx(4.038182) q[3];\nrz(4.1847424) q[3];\ncz q[0],q[1];\ncz q[1],q[2];
+    \ncz q[2],q[3];\nrz(0.0016695663) q[1];\nrx(3*pi/2) q[1];\nrz(3*pi/2) q[1];
+    \nrz(5.8099307) q[2];\nrx(1.5707955) q[2];\nrz(0.53339077) q[2];\ncz q[3],q[0];
+    \nrz(2.098443) q[3];\nrx(pi/2) q[3];\ncz q[2],q[3];\nrz(5.7497984) q[2];
+    \nrx(pi/2) q[2];\n'
+    Returns
+    -------
+    circ_info : dict
+        Dictionary of information about circuit described by qasm string, contains
+        'n' - number of qubits, 'gates' - list of gates in circuit in form
+        ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
+        circuit.
+    """
+    lns = qasm.split(';\n')
+    n = int(lns[2][7:-1])
+    gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
+    pi = np.pi # (Don't listen to linter - needed for eval(prm) ~10 lines down)
+    for gate in gates:
+        if gate[0] in 'rx ry rz':
+            for i,prm in enumerate(gate[1:-1]):
+                try:
+                    float(prm)
+                except:
+                    try:
+                        gate[i+1]=str(eval(prm)) # Using eval instead of custom code. str is to make everything type consistent
+                    except:
+                        pass
+    circ_info = {'n': n, 'gates': gates, 'n_gates': len(gates)}
+    return circ_info

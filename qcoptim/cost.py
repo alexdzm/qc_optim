@@ -994,10 +994,10 @@ class ChemistryCost(Cost):
         num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
         molecule = run_pyscf(
             molecule,
-            run_mp2=True,
-            run_cisd=True,
-            run_ccsd=True,
-            run_fci=True,
+            # run_mp2=True,
+            # run_cisd=True,
+            # run_ccsd=True,
+            # run_fci=True,
         )
         self._of_molecule = molecule
         
