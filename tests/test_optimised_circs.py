@@ -91,3 +91,21 @@ for ii in range(bo_args['nb_iter']):
     t = time.time()
     runner.update()
     print('took {:2g} s to run {}th iter'.format(time.time() - t, ii))
+
+
+x_opt_pred = [opt.best_x for opt in runner.optim_list]
+opt_energies = runner.shot_noise(x_opt_pred, nb_trials=1)
+opt_energies = np.reshape(opt_energies, (10, 10))    
+
+
+f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+im = ax[0].pcolor(rescale(plt_scf))
+ax[0].set_title('scf energies (log scale)')
+ax[0].set_aspect('equal')
+f.colorbar(im, ax=ax[0])
+
+
+im = ax[1].pcolor(rescale(opt_energies))
+ax[1].set_title('circuit energies (log scale)')
+ax[1].set_aspect('equal')
+f.colorbar(im, ax=ax[1])
