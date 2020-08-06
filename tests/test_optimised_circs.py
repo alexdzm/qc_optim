@@ -104,12 +104,16 @@ f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
 im = ax[0].pcolor(rescale(plt_cir))
 ax[0].set_title('circuit energies (log scale)')
 ax[0].set_aspect('equal')
+ax[0].set_ylabel('x3-x2')
+ax[0].set_xlabel('x2-x1')
 f.colorbar(im, ax=ax[0])
 
 
 im = ax[1].pcolor(rescale(opt_energies_mat))
 ax[1].set_title('2d NN BO opt: 33 init, 15 iter')
 ax[1].set_aspect('equal')
+ax[1].set_ylabel('x3-x2')
+ax[1].set_xlabel('x2-x1')
 f.colorbar(im, ax=ax[1])
 
 import dill
