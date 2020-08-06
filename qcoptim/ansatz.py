@@ -235,7 +235,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
     Returns ansatz class construted from a qasm object (uses AnsatzFromCircuit
     as base once circuit is created)
     """
-    def __init__(self, qasm, parameterised = None):
+    def __init__(self, qasm, parameterised = None, qubit_names = 'q'):
         """
         Creates ansatz. For now only assumes rx, ry and rz gates are parameterised
        
@@ -260,7 +260,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
             parameterised = [True] * nb_r_gates
             
         ct, param_ct, x_sol = 0, 0, []
-        c = qk.QuantumCircuit(qk.QuantumRegister(nb_qubits, 'logicals'))
+        c = qk.QuantumCircuit(qk.QuantumRegister(nb_qubits, qubit_names))
         circ = {'rx':c.rx,
                 'ry':c.ry,
                 'rz':c.rz,

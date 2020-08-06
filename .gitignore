@@ -12,3 +12,5 @@ tests/functions.py
 
 # pip install directory
 *.egg-info/*
+
+studies/generating_wpo_for_h3.py

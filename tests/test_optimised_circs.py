@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import qcoptim as qc
 import joblib as jbl
@@ -16,18 +17,18 @@ inst = qc.utilities.quick_instance()
 
 scf_energy = np.zeros(100)
 cir_energy = np.zeros(100)
-cost_list = []
+cost_list, wpo_list = [], []
 for ii, cc in enumerate(data):
     qasm_str = cc['qasm']
     bool_lst = cc['should_prm']
     coords = cc['prm']
+    wpo_list.append(qc.utilities.get_H_chain_qubit_op(coords))
 
     
     atom = 'H 0 0 0; H 0 0 {}; H 0 0 {}'.format(*np.cumsum(coords))
     ansatz = qc.ansatz.AnsatzFromQasm(qasm_str, bool_lst)
-    
+
     cst = qc.cost.ChemistryCost(atom, ansatz, inst, verbose=False)
-    cost_list.append(cst)
     scf_energy[ii] = cst._min_energy
     cir_energy[ii] = np.squeeze(cst(ansatz._x_sol))
     
@@ -50,17 +51,41 @@ ax[1].set_title('circuit energies (log scale)')
 ax[1].set_aspect('equal')
 f.colorbar(im, ax=ax[1])
 
-
-# domain = np.array([(0, 2*pi) for i in range(cost_list[0].nb_params)])
-# bo_args = qc.utilities.gen_default_argsbo(f=cst,
-#                                           domain=domain,
-#                                           nb_init=15,
-#                                           eval_init=False)
-# bo_args['nb_iter'] = 15 
+wpo_list = qc.utilities.enforce_qubit_op_consistency(wpo_list)
 
 
-# runner = qc.optimisers.ParallelRunner(cost_list, 
-#                                       qc.optimisers.MethodBO,
-#                                       optimizer_args = bo_args, 
-#                                       share_init = True, 
-#                                       method = '2d')
+cost_list = [qc.cost.CostWPO(ansatz, inst, ww) for ww in wpo_list]
+
+domain = np.array([(0, 2*pi) for i in range(cost_list[0].ansatz.nb_params)])
+bo_args = qc.utilities.gen_default_argsbo(f=lambda: 0.5,
+                                          domain=domain,
+                                          nb_init=33,
+                                          eval_init=False)
+bo_args['nb_iter'] = 15 
+
+
+runner = qc.optimisers.ParallelRunner(cost_list, 
+                                      qc.optimisers.MethodBO,
+                                      optimizer_args = bo_args, 
+                                      share_init = True, 
+                                      method = '2d')
+
+
+runner.next_evaluation_circuits()
+print('there are {} init circuits'.format(len(runner.circs_to_exec)))
+
+t = time.time()
+bat = qc.utilities.Batch()
+bat.submit_exec_res(runner)
+print('took {:2g} s to run inits'.format(time.time() - t))
+
+t = time.time()
+runner.init_optimisers()
+print('took {:2g} s to init the 100 optims from 33 points'.format(time.time() - t))
+
+for ii in range(bo_args['nb_iter']):
+    t = time.time()
+    runner.next_evaluation_circuits()
+    bat.submit_exec_res(runner)
+    runner.update()
+    print('took {:2g} s to run {}th iter'.format(time.time() - t), ii)

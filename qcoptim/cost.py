@@ -962,6 +962,7 @@ class ChemistryCost(Cost):
         
         TODO: Work out WTF happens to larger atoms and freezing out orbitals
         """
+        raise NotImplementedError("This is out of action for now. Will be implimented via Cost and CostWPO")
         from openfermion import (
             MolecularData,
             bravyi_kitaev, 
@@ -1105,7 +1106,7 @@ def reduce_commuting_meas(settings, coeffs = None, include_groupings = False):
     for op, coef in zip(openfermion_notation_vec,coeffs):
         operator += openfermion.ops.QubitOperator(op, coef)
         
-    grouped = openfermion.utils.group_into_tensor_product_basis_sets(operator, np.random.randint(2*20))
+    grouped = openfermion.utils.group_into_tensor_product_basis_sets(operator, 10)
     
     new_settings = []
     for sett, coef in grouped.items():

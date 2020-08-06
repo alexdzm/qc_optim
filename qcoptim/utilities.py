@@ -990,8 +990,8 @@ def get_H_chain_qubit_op(dist_vec):
 
     Parameters
     ----------
-    dist : float
-        The nuclear separations
+    dist_vec : float
+        Vec of relative nuclear separations. 
 
     Returns
     -------
@@ -1004,34 +1004,47 @@ def get_H_chain_qubit_op(dist_vec):
     """
     # I have experienced some crashes
     from qiskit.chemistry import QiskitChemistryError
-    _retries = 50
+    from openfermion import (
+            MolecularData,
+            bravyi_kitaev, 
+            symmetry_conserving_bravyi_kitaev, 
+            get_fermion_operator
+        )
+    from openfermionpyscf import run_pyscf
+
     dist_vec = np.atleast_1d(dist_vec)
-    atom = '; '.join(['H 0 0 {}'.format(dd) for dd in np.cumsum([0] + list(dist_vec))])
-    for i in range(_retries):
-        try:
-            driver = PySCFDriver(atom=atom, 
-                                 unit=UnitsType.ANGSTROM, 
-                                 charge=0, 
-                                 spin=(len(dist_vec)+1)%2, 
-                                 basis='sto3g',
-                                )
-            molecule = driver.run()
-            repulsion_energy = molecule.nuclear_repulsion_energy
-            num_particles = molecule.num_alpha + molecule.num_beta
-            num_spin_orbitals = molecule.num_orbitals * 2
-            ferOp = FermionicOperator(h1=molecule.one_body_integrals, h2=molecule.two_body_integrals)
-            qubitOp = ferOp.mapping(map_type='parity', threshold=1E-8)
-            qubitOp = Z2Symmetries.two_qubit_reduction(qubitOp,num_particles)
-            break
-        except QiskitChemistryError:
-            if i==(_retries-1):
-                raise
-            pass
-
-    # add nuclear repulsion energy onto identity string
-    qubitOp = qubitOp + WeightedPauliOperator([[repulsion_energy,Pauli(label='I'*qubitOp.num_qubits)]])
-
-    return qubitOp
+    atoms = '; '.join(['H 0 0 {}'.format(dd) for dd in np.cumsum([0] + list(dist_vec))])
+    
+    atoms = atoms.split('; ')
+    open_fermion_geom = []
+    for aa in atoms:
+        sym = aa.split(' ')[0]
+        coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
+        open_fermion_geom.append((sym, coords))
+        
+   
+    basis = 'sto-3g'
+    multiplicity = 1 + len(atoms)%2
+    charge = 0
+    molecule = MolecularData(geometry=open_fermion_geom, 
+                             basis=basis, 
+                             multiplicity=multiplicity,
+                             charge=charge)
+    num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
+    molecule = run_pyscf(molecule)
+        
+    # Convert result to qubit measurement stings
+    ham = molecule.get_molecular_hamiltonian()
+    fermion_hamiltonian = get_fermion_operator(ham)
+    #qubit_hamiltonian = bravyi_kitaev(fermion_hamiltonian)
+    qubit_hamiltonian = symmetry_conserving_bravyi_kitaev(
+        fermion_hamiltonian,
+        active_orbitals=2*molecule.n_orbitals,
+        active_fermions=molecule.get_n_alpha_electrons()+molecule.get_n_beta_electrons()
+    )
+        
+    
+    return convert_wpo_and_openfermion(qubit_hamiltonian)
 
 
 
