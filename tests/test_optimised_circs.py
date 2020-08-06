@@ -94,18 +94,29 @@ for ii in range(bo_args['nb_iter']):
 
 
 x_opt_pred = [opt.best_x for opt in runner.optim_list]
-opt_energies = runner.shot_noise(x_opt_pred, nb_trials=1)
-opt_energies = np.reshape(opt_energies, (10, 10))    
+runner.shot_noise(x_opt_pred, nb_trials=1)
+bat.submit_exec_res(runner)
+opt_energies = runner._results_from_last_x()
+opt_energies_mat = np.reshape(np.squeeze(opt_energies), (10, 10))    
 
 
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].pcolor(rescale(plt_scf))
-ax[0].set_title('scf energies (log scale)')
+im = ax[0].pcolor(rescale(plt_cir))
+ax[0].set_title('circuit energies (log scale)')
 ax[0].set_aspect('equal')
 f.colorbar(im, ax=ax[0])
 
 
-im = ax[1].pcolor(rescale(opt_energies))
-ax[1].set_title('circuit energies (log scale)')
+im = ax[1].pcolor(rescale(opt_energies_mat))
+ax[1].set_title('2d NN BO opt: 33 init, 15 iter')
 ax[1].set_aspect('equal')
 f.colorbar(im, ax=ax[1])
+
+import dill
+with open('h3_chain_data.pkl', 'wb') as f:
+    data = {'scf':plt_scf,
+            'cir':plt_cir,
+            'opt':opt_energies_mat}
+    dill.dump(data)
+    
+    
