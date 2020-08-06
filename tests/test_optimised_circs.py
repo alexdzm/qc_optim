@@ -87,5 +87,7 @@ for ii in range(bo_args['nb_iter']):
     t = time.time()
     runner.next_evaluation_circuits()
     bat.submit_exec_res(runner)
+    print('took {:2g} s to run circs'.format(time.time()  - t))
+    t = time.time()
     runner.update()
-    print('took {:2g} s to run {}th iter'.format(time.time() - t), ii)
+    print('took {:2g} s to run {}th iter'.format(time.time() - t, ii))

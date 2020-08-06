@@ -962,7 +962,7 @@ class ChemistryCost(Cost):
         
         TODO: Work out WTF happens to larger atoms and freezing out orbitals
         """
-        raise NotImplementedError("This is out of action for now. Will be implimented via Cost and CostWPO")
+        print('warning - this has not been debugged for sharing yet')
         from openfermion import (
             MolecularData,
             bravyi_kitaev, 
