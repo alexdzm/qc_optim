@@ -81,7 +81,8 @@ FREE_LIST_DEVICES = ['ibmq_16_melbourne',
                      'ibmq_london',
                      'ibmq_rome',
                      'qasm_simulator']
-
+ONE_Q_GATES={'rx','ry','rz','u3','u2','u1','RX','RY','RZ','U3','U2','U1'}
+TWO_Q_GATES={'cx','cz','cy','CZ','CNOT','CX','CY'}
 # ------------------------------------------------------
 # Back end management related utilities
 # ------------------------------------------------------
@@ -1485,3 +1486,85 @@ def convert_to_settings_and_weights(operator):
             return nb_qubits+1
         
         nb_qubits = _count_qubits(operator)
+    
+   
+# ------------------------------------------------------
+# General Qiskit related helper functions
+# ------------------------------------------------------
+
+def parse_qasm_qk(qasm):
+    """
+    Parse qasm string of a circuit into a more manageable format (currently
+    doesn't support give measurements).
+    
+    Parameters
+    ----------
+    qasm : string
+        qasm string in qiskit format E.G.
+    'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nrx(pi/2) q[0];\nrz(pi/2) q[0];
+    \nrx(pi/2) q[1];\nrz(3.1399274) q[1];\nrx(2.0257901) q[2];\nrz(1.2246784) q[2];
+    \nrx(4.038182) q[3];\nrz(4.1847424) q[3];\ncz q[0],q[1];\ncz q[1],q[2];
+    \ncz q[2],q[3];\nrz(0.0016695663) q[1];\nrx(3*pi/2) q[1];\nrz(3*pi/2) q[1];
+    \nrz(5.8099307) q[2];\nrx(1.5707955) q[2];\nrz(0.53339077) q[2];\ncz q[3],q[0];
+    \nrz(2.098443) q[3];\nrx(pi/2) q[3];\ncz q[2],q[3];\nrz(5.7497984) q[2];
+    \nrx(pi/2) q[2];\n'
+
+    Returns
+    -------
+    circ_info : dict
+        Dictionary of information about circuit described by qasm string, contains
+        'n' - number of qubits, 'gates' - list of gates in circuit in form 
+        ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
+        circuit.
+    """
+    lns = qasm.split(';\n')
+    n = int(lns[2][7:-1])
+    gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
+    for gate in gates:
+        if gate[0] in ONE_Q_GATES:
+            for i,prm in enumerate(gate[1:-1]):
+                try:
+                    float(prm)
+                except:
+                    try:
+                        gate[i+1]=parsePiString(prm)
+                    except:
+                        pass      
+    circ_info = {'n': n, 'gates': gates, 'n_gates': len(gates)}
+    return circ_info
+
+def parsePiString(inString):
+    """
+    Error handling for qiskit's tendency to express parameters close to 
+    multiples of pi/2 as non-numeric strings, used in parse_qasm_qk to
+    turn multiples of pi/2 into float-like string
+    
+    Parameters
+    ----------
+    inString : string
+        String to reformat E.G. '-3*pi/2' -> '-4.71238898038469'
+
+    Returns
+    -------
+    outString : string
+        Reformatted string as a stringified float
+    """
+    piloc=inString.find('pi')
+    if piloc==-1:
+        outString=inString
+    else:
+        start=(inString[0:piloc])
+        try:
+            divloc=inString.find('/')
+            end=1/float(inString[divloc+1:])
+        except:
+            end=1.
+        mid=pi
+        if start=='':
+            start=1.
+        elif start=='-':
+            start=-1.
+        elif start[-1]=='*':
+            start=float(start[:-1])
+        outString = str(start*mid*end)
+    return outString
