@@ -158,6 +158,11 @@ class CostInterface(metaclass=abc.ABCMeta):
         """ Returns parameter objects in the circuit"""
         return self.ansatz.params
     
+    @property
+    def nb_params(self):
+        """ Returns the number params in the ansatz"""
+        return self.ansatz.nb_params
+    
     @abc.abstractmethod
     def evaluate_cost(
         self, 
@@ -267,7 +272,7 @@ class Cost(CostInterface):
         self.instance = instance
         self.nb_qubits = ansatz.nb_qubits  # may be redundant
         self.dim = np.power(2, ansatz.nb_qubits)
-        self.nb_params = ansatz.nb_params # maybe redundant
+        # self.nb_params = ansatz.nb_params # maybe redundant
         self.fix_transpile = fix_transpile # is it needed
         self.verbose = verbose
         self._keep_res = keep_res
@@ -1344,6 +1349,15 @@ class CostWPO(CostInterface):
             return np.real(mean)
         else:
             return mean
+    
+    @property
+    def _min_energy(self):
+        eig = qk.aqua.algorithms.ExactEigensolver(self.grouped_weighted_operators)
+        eig = eig.run()
+        return np.squeeze(abs(eig.eigenvalues))
+        
+        
+
 
 #======================#
 # Cross-fidelity class

@@ -389,15 +389,15 @@ class ParallelRunner():
         # make (almost certainly) unique id
         self._prefix = ut.safe_string.gen(5) 
 
-        # check the method arg is recognised
-        if not method in ['independent','shared','left','right']:
-            if 'NN' not in method:
-                if '2d' not in method:
-                    print('method '+f'{method}'+' not recognised, please choose: '
-                        +'"independent", "shared", "left" or "right".',file=sys.stderr)
-                    raise ValueError("input(method) not recognized")
-        elif method in ['random1','random2']:
-            raise NotImplementedError
+        # # check the method arg is recognised
+        # if not method in ['independent','shared','left','right']:
+        #     if 'NN' not in method:
+        #         if '2d' not in method:
+        #             print('method '+f'{method}'+' not recognised, please choose: '
+        #                 +'"independent", "shared", "left" or "right".',file=sys.stderr)
+        #             raise ValueError("input(method) not recognized")
+        # elif method in ['random1','random2']:
+        #     raise NotImplementedError
 
         # store inputs
         self.cost_objs = cost_objs
@@ -526,7 +526,12 @@ class ParallelRunner():
                     NN.append((consumer, requester, idx))
             return NN
         
-
+        elif 'independent_plus_random_' in self.method:
+            print('This parallelRunner.method assumes domain is [0, 2pi) for each param, for each optim')
+            n_points = int(self.method.split('_')[-1])
+            assert self.optim_list[0]._nb_request == 1, "Currently this only works for padding out single optimisers"
+            return [(ii, ii, jj) for ii, opt in enumerate(self.optim_list) for jj in range(n_points)]
+         
 
     def _gen_padding_params(self, x_new):
         """
@@ -546,6 +551,18 @@ class ParallelRunner():
             disp_vector = np.minimum((a-b)**2,((a+2*np.pi)-b)**2)
             disp_vector = np.minimum(disp_vector,((a-2*np.pi)-b)**2)
             return np.sqrt(np.sum(disp_vector))
+        
+        if 'independent_plus_random_' in self.method:
+            n_points = int(self.method.split('_')[-1])
+            x_new_mat = [[None for ii in range(n_points)] for jj in range(len(self.cost_objs))]
+            for consumer_idx,requester_idx,pt_idx in self._sharing_matrix:
+                if (consumer_idx==requester_idx) and (pt_idx==0):
+                    x_new_mat[requester_idx][0] = x_new[requester_idx][0]
+                elif (consumer_idx==requester_idx):
+                    nb_params = self.cost_objs[consumer_idx].nb_params
+                    x_new_mat[requester_idx][pt_idx] = 2*pi*np.random.rand(nb_params)
+            return x_new_mat
+            
 
         x_new_mat = [[None for ii in range(len(self.cost_objs))] for jj in range(len(self.cost_objs))]
         for consumer_idx,requester_idx,pt_idx in self._sharing_matrix:
@@ -740,7 +757,7 @@ class ParallelRunner():
         return circs_to_exec
             
     
-    def update(self, results_obj = None, sharing_matrix = None):
+    def update(self, results_obj = None, sharing_matrix = None, filter_function = None):
         """ 
         Update the internal state of the optimisers, currently specific
         to Bayesian optimisers
@@ -773,6 +790,9 @@ class ParallelRunner():
                     prev_evl = evl
                     x_stack = np.atleast_2d(x)
                     y_stack = np.atleast_2d(y)
+        # Add a filter            
+        # y_stack = y_stack[y_stack>0.95 min(y_stack)]
+        # x_stack = x_stack[y_stack>0.95 min(y_stack)]
         # clean-up (if this isn't here the last optim won't ever get updated)
         self.optim_list[prev_evl].update(x_stack, y_stack)
 
