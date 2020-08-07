@@ -1517,21 +1517,7 @@ def parse_qasm_qk(qasm):
         ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
         circuit.
     """
-    lns = qasm.split(';\n')
-    n = int(lns[2][7:-1])
-    gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
-    for gate in gates:
-        if gate[0] in ONE_Q_GATES:
-            for i,prm in enumerate(gate[1:-1]):
-                try:
-                    float(prm)
-                except:
-                    try:
-                        gate[i+1]=parsePiString(prm)
-                    except:
-                        pass      
-    circ_info = {'n': n, 'gates': gates, 'n_gates': len(gates)}
-    return circ_info
+    raise NotImplementedError("Function moved into ansatz")
 
 def parsePiString(inString):
     """
@@ -1549,6 +1535,7 @@ def parsePiString(inString):
     outString : string
         Reformatted string as a stringified float
     """
+    raise DeprecationWarning("used eval(string) works fine for now - kept this incase something goes wrong later")
     piloc=inString.find('pi')
     if piloc==-1:
         outString=inString
