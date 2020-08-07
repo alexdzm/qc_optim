@@ -1118,7 +1118,9 @@ class _useful_circuits():
     This don't do anything. It's just a place holder to generate useful
     circuits and ansatzes without overcrowding the namespace. 
     
-    Should probably be moved to a seperate file at some point"""
+    Should probably be moved to a seperate file at some point,
+    
+    Only usefuly functison are Graph_plus_rotation and GHZ_plus_rotation"""
     def __init__(self):
         self._params_per_gate = {'u3' : 3,
                                  'u2' : 2,

@@ -28,11 +28,11 @@ def add_reduced_domain(params, delta, domain):
 # Defaults
 # ===================
 pi= np.pi
-NB_SHOTS_DEFAULT = 2048
+NB_SHOTS_DEFAULT = 1028
 OPTIMIZATION_LEVEL_DEFAULT = 0
 TRANSPILER_SEED_DEFAULT = 10
-NB_INIT = 500
-NB_ITER = 30
+NB_INIT = 5
+NB_ITER = 5
 NB_SWAPS = 0
 NB_DELTA = pi/8
 CHOOSE_DEVICE = True
@@ -48,7 +48,7 @@ if CHOOSE_DEVICE:
     chosen_device = int(input('SELECT IBM DEVICE:'))
     bem.get_backend(chosen_device, inplace=True)
     if chosen_device == 4:
-        noise_model = ut.gen_quick_noise(0.05, 0, 0)
+        noise_model = ut.gen_quick_noise('random', 0.05, 0, 0)
     else:
         noise_model = None
     inst = bem.gen_instance_from_current(initial_layout=[1,3,2],
