@@ -9,10 +9,10 @@ pi = np.pi
 # ------------------------------------------------------
 # General Qiskit related helper functions
 # ------------------------------------------------------
-method = '2d' # 'independent_plus_random_4'
+method = 'independent_plus_random_4' # 'independent_plus_random_4' or '2d'
 nb_init = 10
 nb_iter = 15
-shape = (8, 8)
+shape = (8,8)
 positions = np.linspace(0.2, 1.8, shape[0])
 
 
@@ -32,19 +32,19 @@ if False:
         bool_lst = cc['should_prm']
         coords = cc['prm']
         wpo_list.append(qc.utilities.get_H_chain_qubit_op(coords))
-    
-    
+
+
         atom = 'H 0 0 0; H 0 0 {}; H 0 0 {}'.format(*np.cumsum(coords))
         ansatz = qc.ansatz.AnsatzFromQasm(qasm_str, bool_lst)
-    
+
         cst = qc.cost.ChemistryCost(atom, ansatz, inst, verbose=False)
         scf_energy[ii] = cst._min_energy
         cir_energy[ii] = np.squeeze(cst(ansatz._x_sol))
-    
+
         print('Min energy from pySCF   : ' + str(scf_energy[ii]))
         print('Min energy from our circ: ' + str(cir_energy[ii]))
         print('-----------')
-    
+
     plt_scf = np.reshape(scf_energy, (10, 10))
     plt_cir = np.reshape(cir_energy, (10, 10))
     rescale = lambda x: (np.log(x +2))
@@ -53,14 +53,14 @@ if False:
     ax[0].set_title('scf energies (log scale)')
     ax[0].set_aspect('equal')
     f.colorbar(im, ax=ax[0])
-    
-    
+
+
     im = ax[1].pcolor(rescale(plt_cir))
     ax[1].set_title('circuit energies (log scale)')
     ax[1].set_aspect('equal')
     f.colorbar(im, ax=ax[1])
-    
-    
+
+
 wpo_list = [qc.utilities.get_H_chain_qubit_op([dx1,dx2]) for dx1 in positions for dx2 in positions]
 wpo_list = qc.utilities.enforce_qubit_op_consistency(wpo_list)
 
@@ -105,7 +105,7 @@ for ii in range(bo_args['nb_iter']):
     t = time.time()
     bat.submit_exec_res(runner)
     print('took {:2g} s to run circs'.format(time.time()  - t))
-    
+
     t = time.time()
     runner.update()
     print('took {:2g} s to run {}th update'.format(time.time() - t, ii))
@@ -149,12 +149,13 @@ opt = runner.optim_list
 y_last = np.squeeze([opt[ii].optimiser.Y[-1] for ii in range(shape[0]**2)]).reshape(*shape)
 y_best = [min(opt[ii].optimiser.Y) for ii in range(shape[0]**2)]
 y_best = np.reshape(y_best, shape)
+    harvester.harvest_combos(combos, batch_size=1)
 
 # Gen NN mask (different iter for each point on grid)
-x = np.ones(shape)
-x = np.pad(x, [1,1], mode='constant', constant_values=[0,0])
-y = [[0, 1, 0], [1,1, 1], [0, 1, 0]]
 if '2d' in method:
+    x = np.ones(shape)
+    x = np.pad(x, [1,1], mode='constant', constant_values=[0,0])
+    y = [[0, 1, 0], [1,1, 1], [0, 1, 0]]
     nn_mask = convolve2d(x, y, 'valid')
 else:
     nn_mask = 5*np.ones(shape)
@@ -162,23 +163,23 @@ else:
 for ii in range(bo_args['nb_iter']):
     these_coords = bo_args['initial_design_numdata'] + ii*nn_mask
     these_coords = [int(cc) for cc in np.ravel(these_coords)]
-    
+
     y_ii = [opt[ii].optimiser.Y[these_coords[ii]] for ii in range(shape[0]**2)]
     y_ii = np.squeeze(y_ii).reshape(*shape)
-    
+
     diff = np.abs(y_ii - y_last)
-    
+
     im = ax[ii].pcolor(diff, vmin=0.0,vmax=2)
     f.colorbar(im, ax=ax[ii])
     ax[ii].set_title('iter' + str(ii))
-    
+
     if ii > 9:
         ax[ii].set_xlabel('x2-x1 (au)')
     if ii%5==0:
         ax[ii].set_ylabel('x3-x2 (au)')
 ax[5].set_ylabel('y_ii - y_last')
 
-    
+
 
 #%% Plotting y_best_ii - y_best
 f, ax = plt.subplots(3, 5, sharex=True, sharey=True)
@@ -193,11 +194,11 @@ for ii in range(bo_args['nb_iter']):
     y_best_ii = [min(opt[ii].optimiser.Y[:these_coords[ii]]) for ii in range(shape[0]**2)]
     y_best_ii = np.squeeze(y_best_ii).reshape(*shape)
     diff = np.abs(y_best_ii - y_best)
-    
+
     im = ax[ii].pcolor(diff, vmin=0.0,vmax=2)
     f.colorbar(im, ax=ax[ii])
     ax[ii].set_title('iter' + str(ii))
-    
+
     if ii > 9:
         ax[ii].set_xlabel('x2-x1 (au)')
     if ii%5==0:
@@ -216,15 +217,15 @@ ax = np.ravel(ax)
 for ii in range(bo_args['nb_iter']):
     these_coords = bo_args['initial_design_numdata'] + ii*nn_mask
     these_coords = [int(cc) for cc in np.ravel(these_coords)]
-    
+
     y_ii = [opt[ii].optimiser.Y[these_coords[ii]] for ii in range(shape[0]**2)]
     y_ii = np.squeeze(y_ii).reshape(*shape)
-    
-    
+
+
     im = ax[ii].pcolor(rescale(y_ii), vmin=0.0,vmax=2)
     f.colorbar(im, ax=ax[ii])
     ax[ii].set_title('iter' + str(ii))
-    
+
     if ii > 9:
         ax[ii].set_xlabel('x2-x1 (au)')
     if ii%5==0:
@@ -235,8 +236,8 @@ ax[5].set_ylabel('y_ii')
 
 #%% Importing and plotting data
 import joblib
-fname = 'h3_full_circs_init{}_iter{}_method.dmp'.format(nb_init,nb_iter) + method[-2:]
-with open('h3_chain_data.dmp', 'wb') as f:
+fname = 'h3_full_circs_init{}_iter{}_method{}.dmp'.format(nb_init,nb_iter,method[-2:])
+with open(fname, 'wb') as f:
     data = {'ed':ed_energies_mat,
             'opt':opt_energies_mat,
             'optims':runner.optim_list}
