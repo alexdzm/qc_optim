@@ -235,7 +235,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
     Returns ansatz class construted from a qasm object (uses AnsatzFromCircuit
     as base once circuit is created)
     """
-    def __init__(self, qasm, parameterised = None, qubit_names = 'q'):
+    def __init__(self, qasm, parameterised = None, qubit_names = 'logicals'):
         """
         Creates ansatz. For now only assumes rx, ry and rz gates are parameterised
        

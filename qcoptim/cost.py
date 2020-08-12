@@ -1276,11 +1276,12 @@ class CostWPO(CostInterface):
         # store operators in grouped form, currently use `unsorted_grouping` method, which
         # is a greedy method. Sorting method could be controlled with a kwarg
         self.grouped_weighted_operators = groupedwpo.unsorted_grouping(weighted_pauli_operators)
-
         # generate and transpile measurement circuits
+        circuit_cp = copy.deepcopy(self.ansatz.circuit)
         measurement_circuits = self.grouped_weighted_operators.construct_evaluation_circuit(
-            wave_function=copy.deepcopy(self.ansatz.circuit),
-            statevector_mode=self.instance.is_statevector
+            wave_function=circuit_cp,
+            statevector_mode=self.instance.is_statevector,
+            qr=circuit_cp.qregs[0]
             )
         self._meas_circuits = self.instance.transpile(measurement_circuits)
 
