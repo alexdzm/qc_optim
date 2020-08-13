@@ -14,3 +14,7 @@ tests/functions.py
 *.egg-info/*
 
 studies/generating_wpo_for_h3.py
+
+*.dmp
+
+*.h5

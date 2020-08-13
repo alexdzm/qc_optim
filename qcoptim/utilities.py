@@ -248,6 +248,7 @@ class Batch():
         self._last_circ_list = self.circ_list
         self.circ_list = []
         self._known_optims = []
+        return results
     
     def result(self, obj_in):
         """

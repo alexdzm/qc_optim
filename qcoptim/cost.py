@@ -1353,6 +1353,7 @@ class CostWPO(CostInterface):
     
     @property
     def _min_energy(self):
+        print('warning CostWPO._min_energy is not working')
         eig = qk.aqua.algorithms.ExactEigensolver(self.grouped_weighted_operators)
         eig = eig.run()
         return np.squeeze(abs(eig.eigenvalues))
