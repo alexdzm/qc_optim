@@ -1464,7 +1464,7 @@ def convert_to_settings_and_weights(operator):
     settings : TYPE
         List of measurment settings in string format 'xx1xyz' etc.
     """
-    if str(operator.__class__) == "<class 'qiskit.aqua.operators.legacy.weighted_pauli_operator.WeightedPauliOperator'>":
+    if weighted_pauli_operator in str(operator.__class__):
         all_ops = operator.to_dict()['paulis']
         weights = []
         settings = []
