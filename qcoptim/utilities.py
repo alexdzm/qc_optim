@@ -153,7 +153,8 @@ class BackendManager():
                      noise_model = None, 
                      initial_layout=None,
                      seed_transpiler=None,
-                     measurement_error_mitigation_cls=None):
+                     measurement_error_mitigation_cls=None,
+                     **kwargs):
         """ Generate an instance from the current backend
         Not sure this is needed here: 
             + maybe building an instance should be decided in the main_script
@@ -174,7 +175,8 @@ class BackendManager():
                             optimization_level=optim_lvl, noise_model= noise_model,
                             initial_layout=initial_layout,
                             seed_transpiler=seed_transpiler,
-                            measurement_error_mitigation_cls=measurement_error_mitigation_cls)
+                            measurement_error_mitigation_cls=measurement_error_mitigation_cls,
+                            **kwargs)
         print('Generated a new quantum instance')
         return instance
 
