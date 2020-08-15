@@ -1278,6 +1278,7 @@ class CostWPO(CostInterface):
         self.grouped_weighted_operators = groupedwpo.unsorted_grouping(weighted_pauli_operators)
         # generate and transpile measurement circuits
         circuit_cp = copy.deepcopy(self.ansatz.circuit)
+        circuit_cp.qregs[0].name = 'logicals'
         measurement_circuits = self.grouped_weighted_operators.construct_evaluation_circuit(
             wave_function=circuit_cp,
             statevector_mode=self.instance.is_statevector,
