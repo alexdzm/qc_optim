@@ -167,6 +167,7 @@ class BackendManager():
                 but it has to be spesified for the instance here??? Don't know the best
                 way forward. 
         """
+        is_ibmq_provider  = qk.aqua.utils.backend_utils.is_ibmq_provider
         if type(initial_layout) == list:
             nb_qubits = len(initial_layout)
             logical_qubits = qk.QuantumRegister(nb_qubits, 'logicals')  
@@ -175,6 +176,7 @@ class BackendManager():
                             optimization_level=optim_lvl, noise_model= noise_model,
                             initial_layout=initial_layout,
                             seed_transpiler=seed_transpiler,
+                            skip_qobj_validation=(not is_ibmq_provider(self.current_backend)),
                             measurement_error_mitigation_cls=measurement_error_mitigation_cls,
                             **kwargs)
         print('Generated a new quantum instance')
