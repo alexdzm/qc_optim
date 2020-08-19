@@ -15,9 +15,9 @@ pi = np.pi
 # ------------------------------------------------------
 method = '2d' # 'independent_plus_random_4' or '2d'
 backend = 4
-nb_init = 10
-nb_iter = 10
-shape = (3, 3)
+nb_init = 1
+nb_iter = 1
+shape = (2,2)
 positions = np.linspace(0.3, 1.8, shape[0])
 
 
@@ -113,6 +113,7 @@ for dx1 in positions:
 scf_energy = np.reshape(scf_energy, shape)
 #%% Create cost functions
 ansatz = qc.ansatz.AnsatzFromQasm(data[0]['qasm'], data[0]['should_prm'])
+ansatz = qc.ansatz.RandomAnsatz(4,2)
 cost_list = [qc.cost.CostWPO(ansatz, inst, ww) for ww in wpo_list]
 ed_energies_mat = [c._min_energy for c in cost_list]
 ed_energies_mat = np.reshape(ed_energies_mat, shape)
