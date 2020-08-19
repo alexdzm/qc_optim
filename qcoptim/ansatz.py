@@ -276,7 +276,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
                 x_sol.append(float(gate[1]))
                 param_ct+=1
             elif gate[0] in 'rx ry rz':
-                p = gate[1]
+                p = float(gate[1])
                 q = int(gate[2].split('[')[1].split(']')[0])
                 circ[gate[0]](p,q)
             elif gate[0] in 'cx cz':                
