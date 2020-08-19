@@ -87,6 +87,8 @@ class BaseAnsatz(AnsatzInterface):
         self._params = self._generate_params()
         self._nb_params = len(self._params)
         self._circuit = self._generate_circuit()
+        if qubit_names is not None:
+            self._circuit.qregs[0].name = qubit_names
 
     def _generate_params(self):
         """ To be implemented in the subclasses """
@@ -297,7 +299,7 @@ class RandomAnsatz(BaseAnsatz):
     def __init__(self,*args,
                  seed=None,
                  gate2='CX',
-                ):
+                 **kwargs,):
 
         # set random seed if passed
         if seed is not None:
@@ -307,7 +309,7 @@ class RandomAnsatz(BaseAnsatz):
         self.gate2 = gate2
 
         # explicitly call base class initialiser
-        super(RandomAnsatz,self).__init__(*args)
+        super(RandomAnsatz,self).__init__(*args, **kwargs)
 
     def _generate_params(self):
         """ """
