@@ -944,7 +944,7 @@ class ChemistryCost(Cost):
     """
     
     
-    def __init__(self, atoms, ansatz, instance, **args):
+    def __init__(self, atoms, ansatz, instance = None, **args):
         """
         Create cost object using chemistry Hamiltonian. Requires openfermion to
         get weights and pauli strings. Uses the BK encoding to strings. 
@@ -952,7 +952,7 @@ class ChemistryCost(Cost):
         Parameters
         ----------
         atom : list<list<string,x,y,z>>
-            Atomic geometery in openfermion format e.g. [('H', 0, 0, 0), ('H', 0, 0, 1)]
+            Atomic geometery in openfermion format e.g. 'H 0 0 0; H 0 0 2'
         ansatz : ansatz.ansatz
             Ansatz object used to evalutate the cost functino 
         instance : TYPE
@@ -977,7 +977,8 @@ class ChemistryCost(Cost):
         from openfermionpyscf import run_pyscf
         from qiskit.aqua.operators import Z2Symmetries
         # atom = 'H 0 0 0; H 0 0 {}; H 0 0 {}; H 0 0 {}'.format(dist, 2*dist, 3*dist)
-
+        if instance is None:
+            instance = ut.quick_instance()
         # Converts string to openfermion geometery
         atom_vec = atoms.split('; ')
         open_fermion_geom = []

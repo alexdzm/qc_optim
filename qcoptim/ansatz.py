@@ -206,9 +206,14 @@ class AnsatzFromCircuit(AnsatzInterface):
             return reordered
         
         if self._params[0].name[0] == 'R':
-            self._params = _reorder_params(self._params)
+            test = [p.name[0] == 'R' for p in self._params]
+            if all(test):
+                self._params = _reorder_params(self._params)
         else:
-            raise Warning("Ordering of circuit parameters may not be consistent with your expectation. Check self.params to make sure the ordered list looks right.")
+            for ii, pp in enumerate(circuit.parameters):
+                pp._name = 'R'+str(ii)
+            self._params = _reorder_params(self._params)
+            print("Heads up: Ordering of circuit parameters may not be consistent with your expectation. Check self.params and self.circuit.draw() to make sure the ordered list looks right.")
         
     @property
     def depth(self):
