@@ -342,7 +342,7 @@ safe_string = SafeString()
 
 def quick_instance():
     simulator = qk.Aer.get_backend('qasm_simulator')
-    inst = qk.aqua.QuantumInstance(simulator, shots=512, optimization_level=1)
+    inst = qk.aqua.QuantumInstance(simulator, shots=1024, optimization_level=0)
     return inst
 
 

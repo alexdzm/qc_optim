@@ -245,7 +245,7 @@ class Cost(CostInterface):
         + qk_vars qiskit.parameter objects
         
     """
-    def __init__(self, ansatz, instance, 
+    def __init__(self, ansatz, instance = None, 
                  fix_transpile = True, # maybe redundent now
                   keep_res = False, 
                   verbose = True, 
@@ -269,6 +269,7 @@ class Cost(CostInterface):
             name = 'circuit_' + ut.gen_random_str(5)
         self.name = name
         self.ansatz = ansatz
+        if instance is None: instance = ut.quick_instance()
         self.instance = instance
         self.nb_qubits = ansatz.nb_qubits  # may be redundant
         self.dim = np.power(2, ansatz.nb_qubits)
@@ -913,7 +914,7 @@ class StateFidelityCost(Cost):
     instance : qiskit.quantum instance class
         quantum instance that transpile the measurement circuits.
     """
-    def __init__(self, state, ansatz, instance, **args):
+    def __init__(self, state, ansatz, instance=None, **args):
         from . import pauli_decomposition
         weights, settings = pauli_decomposition.weights_and_settings(state, ansatz.nb_qubits)
         self._base_weights = weights
@@ -977,8 +978,7 @@ class ChemistryCost(Cost):
         from openfermionpyscf import run_pyscf
         from qiskit.aqua.operators import Z2Symmetries
         # atom = 'H 0 0 0; H 0 0 {}; H 0 0 {}; H 0 0 {}'.format(dist, 2*dist, 3*dist)
-        if instance is None:
-            instance = ut.quick_instance()
+
         # Converts string to openfermion geometery
         atom_vec = atoms.split('; ')
         open_fermion_geom = []
