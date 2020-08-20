@@ -1120,7 +1120,7 @@ def _GraphCycl_12qubits_init_rotations(params,
     return c
 
 
-class _useful_circuits():
+class _SandwitchAnsatzes():
     """
     This don't do anything. It's just a place holder to generate useful
     circuits and ansatzes without overcrowding the namespace. 
@@ -1135,7 +1135,8 @@ class _useful_circuits():
                                  'rx' : 1,
                                  'ry' : 1,
                                  'rz' : 1,
-                                 None : 0}
+                                 None : 0,
+                                 'None' :0}
     def _qk_params(self, nb_params):
         """
         Creates list of length nb_params of qk.Parameter objects, named R1, R2...
@@ -1185,7 +1186,8 @@ class _useful_circuits():
               'rx': circ.rx,
               'ry': circ.ry,
               'rz': circ.rz,
-              None: circ.id}
+              None: circ.id,
+              'None' : circ.id}
         scale = self._params_per_gate[gate]
         operation = di[gate]
         if gate is not None:
@@ -1215,6 +1217,10 @@ class _useful_circuits():
         -------
         ansatz.Ansatz instance
         """
+        # Hack around for xyzpy data typing consistency
+        if init_rotation == 'None': init_rotation = None
+        if final_rotation == 'None': final_rotation = None
+        
         logical_qubits = qk.QuantumRegister(nb_qubits, 'logicals')
         c = qk.QuantumCircuit(logical_qubits)
         nb_params_ini = self._params_per_gate[init_rotation]*nb_qubits
@@ -1246,6 +1252,8 @@ class _useful_circuits():
         -------
         ansatz.Ansatz instance
 =        """
+        if init_rotation == 'None': init_rotation = None
+        if final_rotation == 'None': final_rotation = None
         logical_qubits = qk.QuantumRegister(nb_qubits, 'logicals')
         c = qk.QuantumCircuit(logical_qubits)
         nb_params_ini = self._params_per_gate[init_rotation]*nb_qubits
@@ -1257,7 +1265,7 @@ class _useful_circuits():
         c.barrier()
         return AnsatzFromCircuit(c)
 
-sandwitch_ansatzes = _useful_circuits()
+sandwitch_ansatzes = _SandwitchAnsatzes()
 
 
 
