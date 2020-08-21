@@ -199,6 +199,67 @@ with open(fname, 'wb') as f:
 
 
 
+
+#%% Loading results
+fname = 'h3_paris_64_init25_iter12_method2d_randAns26.dmp' # measure recalc ever 80min random circ seed=26 aweful data
+
+
+fname = 'h3_paris_100_init15_iter12_method2d.dmp'
+fname = 'h3_paris_64_init15_iter8_method2d.dmp'
+fname = 'h3_paris_64_init15_iter15_method2d1.5.dmp'
+fname = 'h3_paris_64_init15_iter10_method_2d.dmp' # measurement recalc every 2 hrs
+fname = 'h3_paris_64_init15_iter10_method2d_randomCirc2.dmp' # measure recalc ever 80min random circ seed=26
+
+#%% plotting results
+data = joblib.load(fname)
+scf_energy = data['scf']
+opt_energies_mat = data['opt']
+positions = data['positions']
+
+rescale = lambda x: np.log(x +2)
+
+f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+im = ax[0].plot(positions, (scf_energy))
+ax[0].set_title('(exact energy)')
+ax[0].set_xlabel('x2-x1 (A)')
+ax[0].legend(['d32: ' + str(round(p, 2)) for p in positions], loc='upper right')
+
+
+im = ax[1].plot(positions, (opt_energies_mat))
+ax[1].set_title('(VQE energy)')
+ax[1].set_xlabel('x2-x1 (A)')
+f.legend()
+
+from matplotlib import colors
+
+f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+im = ax[0].pcolor((scf_energy),
+                  vmin=-1.6, vmax=-.5)
+ax[0].set_title('Exact energy (log scale)')
+ax[0].set_aspect('equal')
+ax[0].set_ylabel('x3-x2 (A)')
+ax[0].set_xlabel('x2-x1 (A)')
+f.colorbar(im, ax=ax[0])
+     
+
+im = ax[1].pcolor((opt_energies_mat),
+                  vmin = -1.6, vmax = -0.5)
+ax[1].set_title('VQE energy: Paris (log scale)')
+ax[1].set_aspect('equal')
+ax[1].set_xlabel('x2-x1 (A)')
+f.colorbar(im, ax=ax[1])
+
+plt.figure()
+plt.plot(positions, opt_energies_mat - scf_energy)
+plt.xlabel('x2-x1')
+plt.ylabel('Eopt - Eexact')
+plt.title('VQE error')
+plt.legend(['d32:'+str(round(p, 2)) for p in positions])
+
+
+
+
+
 # #%% Plotting y_ii - y_fin
 # # Set up fig stuff
 # f, ax = plt.subplots(3, 5, sharex=True, sharey=True)
