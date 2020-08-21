@@ -1,5 +1,6 @@
 import os
 import time
+import joblib
 import numpy as np
 import qiskit as qk
 import qcoptim as qc
@@ -187,7 +188,6 @@ f.colorbar(im, ax=ax[1])
 
 #%% Save data
 # Importing and plotting data
-import joblib
 fname = 'h3_lin_circs_144_init{}_iter{}_method{}_large3.dmp'.format(nb_init,nb_iter,method[-2:])
 with open(fname, 'wb') as f:
     data = {'shape':shape,
