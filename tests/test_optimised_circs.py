@@ -82,7 +82,7 @@ if False:
     plt_cir = np.reshape(cir_energy, (10, 10))
     rescale = lambda x: (np.log(x +2))
     f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-    im = ax[0].pcolor(rescale(plt_scf))
+    im = ax[0].pcolor(rescale(plt_scf)) 
     ax[0].set_title('scf energies (log scale)')
     ax[0].set_aspect('equal')
     f.colorbar(im, ax=ax[0])
