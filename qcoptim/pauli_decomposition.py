@@ -57,6 +57,11 @@ def gen_computbasis_proj(N=3):
     op_comput = [zero * zero.dag(), one * one.dag()]
     return [tensor_listop(parts) for parts in it.product(*[op_comput]*N)]
 
+def gen_computbasis_kets(N=3):
+    """ generate a list of the 2^N elements of computational basis proj"""
+    op_comput = [zero , one]
+    return [tensor_listop(parts) for parts in it.product(*[op_comput]*N)]
+
 def gen_computbasis(N=3):
     """ generate a list of the 4^N elements of computational basis"""
     op_comput = [zero * zero.dag(), zero * one.dag(), one * zero.dag(), one * one.dag() ]
@@ -175,6 +180,13 @@ def gen_proj_ghz(N=3):
     ghz = gen_ghz(N)
     return ghz * ghz.dag()
 
+def gen_random_state(N=3):
+    """ retuns a random (normalised) state in the Hilbertspace - Random normal phases, gaussian distributed amplitues"""
+    computbasis_kets = gen_computbasis_kets(N);
+    amplitudes = np.random.normal(0, 1, 2**N)
+    phases = 2*np.pi * np.random.rand(2**N)
+    random_state = sum([aa*np.exp(1j * pp)*ss for aa, pp, ss in zip(amplitudes, phases, computbasis_kets)])
+    return random_state / (random_state.norm())
 
 #Stabilizer generators, and group elements
 def gen_stab_gen_ghz(N=3, symbolic=False):
@@ -364,7 +376,7 @@ def assert_and_recast_to_real(array):
 
 
 
-
+#%% Test section
 if __name__ == '__main__':
     # Decomposition of a graph state
     N_test = 6

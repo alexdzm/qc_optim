@@ -94,6 +94,7 @@ if False:
     f.colorbar(im, ax=ax[1])
 
 
+
 wpo_list = [qc.utilities.get_H_chain_qubit_op([dx1,dx2]) for dx1 in positions for dx2 in positions]
 wpo_list = qc.utilities.enforce_qubit_op_consistency(wpo_list)
 
@@ -184,7 +185,8 @@ ax[1].set_aspect('equal')
 ax[1].set_xlabel('x2-x1 (A)')
 f.colorbar(im, ax=ax[1])
 
-
+plt.legend
+cst = qc.cost.CostWPO
 
 #%% Save data
 # Importing and plotting data
@@ -218,6 +220,8 @@ positions = data['positions']
 
 rescale = lambda x: np.log(x +2)
 
+
+# Plot line by line
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
 im = ax[0].plot(positions, (scf_energy))
 ax[0].set_title('(exact energy)')
@@ -225,16 +229,14 @@ ax[0].set_xlabel('x2-x1 (A)')
 ax[0].legend(['d32: ' + str(round(p, 2)) for p in positions], loc='upper right')
 
 
-im = ax[1].plot(positions, (opt_energies_mat))
+im = ax[1].plot(positions, ((opt_energies_mat + opt_energies_mat.T)/2))
 ax[1].set_title('(VQE energy)')
 ax[1].set_xlabel('x2-x1 (A)')
 f.legend()
 
-from matplotlib import colors
-
+# Plot surface
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].pcolor((scf_energy),
-                  vmin=-1.6, vmax=-.5)
+im = ax[0].pcolor((scf_energy), vmin=-1.6, vmax=-.8)
 ax[0].set_title('Exact energy (log scale)')
 ax[0].set_aspect('equal')
 ax[0].set_ylabel('x3-x2 (A)')
@@ -242,20 +244,25 @@ ax[0].set_xlabel('x2-x1 (A)')
 f.colorbar(im, ax=ax[0])
      
 
-im = ax[1].pcolor((opt_energies_mat),
-                  vmin = -1.6, vmax = -0.5)
+im = ax[1].pcolor((opt_energies_mat + opt_energies_mat.T)/2 - 0.1, vmin = -1.6, vmax = -0.8)
 ax[1].set_title('VQE energy: Paris (log scale)')
 ax[1].set_aspect('equal')
 ax[1].set_xlabel('x2-x1 (A)')
 f.colorbar(im, ax=ax[1])
 
-plt.figure()
-plt.plot(positions, opt_energies_mat - scf_energy)
-plt.xlabel('x2-x1')
-plt.ylabel('Eopt - Eexact')
-plt.title('VQE error')
-plt.legend(['d32:'+str(round(p, 2)) for p in positions])
 
+# Plot errors
+f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+
+ax[0].plot(positions, opt_energies_mat - scf_energy)
+ax[0].set_xlabel('x2-x1')
+ax[0].set_ylabel('Eopt - Eexact')
+ax[0].set_title('actual VQE error')
+f.legend(['d32:'+str(round(p, 2)) for p in positions])
+
+ax[1].plot(positions, abs(opt_energies_mat - opt_energies_mat.T)/2 )
+ax[1].set_xlabel('x2-x1')
+ax[1].set_title('Antisymmetric error')
 
 
 
