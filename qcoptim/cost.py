@@ -973,7 +973,8 @@ class ChemistryCost(Cost):
             MolecularData,
             bravyi_kitaev, 
             symmetry_conserving_bravyi_kitaev, 
-            get_fermion_operator
+            get_fermion_operator,
+            utils
         )
         from openfermionpyscf import run_pyscf
         from qiskit.aqua.operators import Z2Symmetries
@@ -1011,14 +1012,18 @@ class ChemistryCost(Cost):
         # Convert result to qubit measurement stings
         ham = molecule.get_molecular_hamiltonian()
         fermion_hamiltonian = get_fermion_operator(ham)
+        if 'Li' in atoms:
+            fermion_hamiltonian = utils.freeze_orbitals(fermion_hamiltonian, [0, 1], [6, 7, 8, 9])
+            active_orbitals = 2*molecule.n_orbitals - 6
         #qubit_hamiltonian = bravyi_kitaev(fermion_hamiltonian)
         qubit_hamiltonian = symmetry_conserving_bravyi_kitaev(
             fermion_hamiltonian,
-            active_orbitals=2*molecule.n_orbitals,
-            active_fermions=molecule.get_n_alpha_electrons()+molecule.get_n_beta_electrons()
+            active_orbitals=active_orbitals,
+            active_fermions=active_fermions
         )
         
         weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
+       
         #weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
         self._qk_wpo = weighted_pauli_op
         self._of_wpo = qubit_hamiltonian
