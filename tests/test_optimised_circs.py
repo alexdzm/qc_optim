@@ -15,11 +15,11 @@ pi = np.pi
 # General Qiskit related helper functions
 # ------------------------------------------------------
 method = '2d' # 'independent_plus_random_4' or '2d'
-backend = 4
-nb_init = 1
-nb_iter = 1
-shape = (2,2)
-positions = np.linspace(0.3, 1.8, shape[0])
+backend = 2
+nb_init = 15
+nb_iter = 10
+shape = (8, 8)
+positions = np.linspace(0.2, 2, shape[0])
 
 
 
@@ -40,7 +40,7 @@ ibm_backend = provider.get_backend(bem.LIST_OF_DEVICES[backend-1])
 if backend != 4:
     embedding = find_best_embedding_circuit_backend(ansatz.circuit,
                                                     ibm_backend,
-                                                    mode='111')
+                                                    mode='010')
     initial_layout = embedding_to_initial_layout(embedding)
     mitigation = CompleteMeasFitter
     noise_model = None
@@ -115,7 +115,8 @@ for dx1 in positions:
 scf_energy = np.reshape(scf_energy, shape)
 #%% Create cost functions
 ansatz = qc.ansatz.AnsatzFromQasm(data[0]['qasm'], data[0]['should_prm'])
-ansatz = qc.ansatz.RandomAnsatz(4,2)
+# ansatz = qc.ansatz.RandomAnsatz(4,2)
+# print('warning - this is a random ansatz')
 cost_list = [qc.cost.CostWPO(ansatz, inst, ww) for ww in wpo_list]
 ed_energies_mat = [c._min_energy for c in cost_list]
 ed_energies_mat = np.reshape(ed_energies_mat, shape)
@@ -190,7 +191,7 @@ cst = qc.cost.CostWPO
 
 #%% Save data
 # Importing and plotting data
-fname = 'h3_lin_circs_144_init{}_iter{}_method{}_large3.dmp'.format(nb_init,nb_iter,method[-2:])
+fname = 'h3_paris_64_init{}_iter{}_method{}_optAnsatz.dmp'.format(nb_init,nb_iter,method[-2:])
 with open(fname, 'wb') as f:
     data = {'shape':shape,
             'positions':positions,
@@ -202,67 +203,67 @@ with open(fname, 'wb') as f:
 
 
 
-#%% Loading results
-fname = 'h3_paris_64_init25_iter12_method2d_randAns26.dmp' # measure recalc ever 80min random circ seed=26 aweful data
+# #%% Loading results
+# fname = 'h3_paris_64_init25_iter12_method2d_randAns26.dmp' # measure recalc ever 80min random circ seed=26 aweful data
 
 
-fname = 'h3_paris_100_init15_iter12_method2d.dmp'
-fname = 'h3_paris_64_init15_iter8_method2d.dmp'
-fname = 'h3_paris_64_init15_iter15_method2d1.5.dmp'
-fname = 'h3_paris_64_init15_iter10_method_2d.dmp' # measurement recalc every 2 hrs
-fname = 'h3_paris_64_init15_iter10_method2d_randomCirc2.dmp' # measure recalc ever 80min random circ seed=26
+# fname = 'h3_paris_100_init15_iter12_method2d.dmp'
+# fname = 'h3_paris_64_init15_iter8_method2d.dmp'
+# fname = 'h3_paris_64_init15_iter15_method2d1.5.dmp'
+# fname = 'h3_paris_64_init15_iter10_method_2d.dmp' # measurement recalc every 2 hrs
+# fname = 'h3_paris_64_init15_iter10_method2d_randomCirc2.dmp' # measure recalc ever 80min random circ seed=26
 
-#%% plotting results
-data = joblib.load(fname)
-scf_energy = data['scf']
-opt_energies_mat = data['opt']
-positions = data['positions']
+# #%% plotting results
+# data = joblib.load(fname)
+# scf_energy = data['scf']
+# opt_energies_mat = data['opt']
+# positions = data['positions']
 
-rescale = lambda x: np.log(x +2)
-
-
-# Plot line by line
-f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].plot(positions, (scf_energy))
-ax[0].set_title('(exact energy)')
-ax[0].set_xlabel('x2-x1 (A)')
-ax[0].legend(['d32: ' + str(round(p, 2)) for p in positions], loc='upper right')
+# rescale = lambda x: np.log(x +2)
 
 
-im = ax[1].plot(positions, ((opt_energies_mat + opt_energies_mat.T)/2))
-ax[1].set_title('(VQE energy)')
-ax[1].set_xlabel('x2-x1 (A)')
-f.legend()
+# # Plot line by line
+# f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+# im = ax[0].plot(positions, (scf_energy))
+# ax[0].set_title('(exact energy)')
+# ax[0].set_xlabel('x2-x1 (A)')
+# ax[0].legend(['d32: ' + str(round(p, 2)) for p in positions], loc='upper right')
 
-# Plot surface
-f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].pcolor((scf_energy), vmin=-1.6, vmax=-.8)
-ax[0].set_title('Exact energy (log scale)')
-ax[0].set_aspect('equal')
-ax[0].set_ylabel('x3-x2 (A)')
-ax[0].set_xlabel('x2-x1 (A)')
-f.colorbar(im, ax=ax[0])
+
+# im = ax[1].plot(positions, ((opt_energies_mat + opt_energies_mat.T)/2))
+# ax[1].set_title('(VQE energy)')
+# ax[1].set_xlabel('x2-x1 (A)')
+# f.legend()
+
+# # Plot surface
+# f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+# im = ax[0].pcolor((scf_energy), vmin=-1.6, vmax=-.8)
+# ax[0].set_title('Exact energy (log scale)')
+# ax[0].set_aspect('equal')
+# ax[0].set_ylabel('x3-x2 (A)')
+# ax[0].set_xlabel('x2-x1 (A)')
+# f.colorbar(im, ax=ax[0])
      
 
-im = ax[1].pcolor((opt_energies_mat + opt_energies_mat.T)/2 - 0.1, vmin = -1.6, vmax = -0.8)
-ax[1].set_title('VQE energy: Paris (log scale)')
-ax[1].set_aspect('equal')
-ax[1].set_xlabel('x2-x1 (A)')
-f.colorbar(im, ax=ax[1])
+# im = ax[1].pcolor((opt_energies_mat + opt_energies_mat.T)/2 - 0.1, vmin = -1.6, vmax = -0.8)
+# ax[1].set_title('VQE energy: Paris (log scale)')
+# ax[1].set_aspect('equal')
+# ax[1].set_xlabel('x2-x1 (A)')
+# f.colorbar(im, ax=ax[1])
 
 
-# Plot errors
-f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
+# # Plot errors
+# f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
 
-ax[0].plot(positions, opt_energies_mat - scf_energy)
-ax[0].set_xlabel('x2-x1')
-ax[0].set_ylabel('Eopt - Eexact')
-ax[0].set_title('actual VQE error')
-f.legend(['d32:'+str(round(p, 2)) for p in positions])
+# ax[0].plot(positions, opt_energies_mat - scf_energy)
+# ax[0].set_xlabel('x2-x1')
+# ax[0].set_ylabel('Eopt - Eexact')
+# ax[0].set_title('actual VQE error')
+# f.legend(['d32:'+str(round(p, 2)) for p in positions])
 
-ax[1].plot(positions, abs(opt_energies_mat - opt_energies_mat.T)/2 )
-ax[1].set_xlabel('x2-x1')
-ax[1].set_title('Antisymmetric error')
+# ax[1].plot(positions, abs(opt_energies_mat - opt_energies_mat.T)/2 )
+# ax[1].set_xlabel('x2-x1')
+# ax[1].set_title('Antisymmetric error')
 
 
 
