@@ -987,11 +987,10 @@ class ChemistryCost(Cost):
             sym = aa.split(' ')[0]
             coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
             open_fermion_geom.append((sym, coords))
-        basis = 'sto-3g'
+        basis = 'sto-6g'
         multiplicity = 1 + len(atom_vec)%2
         charge = 0
         
-      
         # Construct the molecule and calc overlaps
         molecule = MolecularData(
             geometry=open_fermion_geom, 
@@ -999,7 +998,7 @@ class ChemistryCost(Cost):
             multiplicity=multiplicity,
             charge=charge,
         )
-        num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
+        active_fermions = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
         molecule = run_pyscf(
             molecule,
             # run_mp2=True,
@@ -1015,6 +1014,9 @@ class ChemistryCost(Cost):
         if 'Li' in atoms:
             fermion_hamiltonian = utils.freeze_orbitals(fermion_hamiltonian, [0, 1], [6, 7, 8, 9])
             active_orbitals = 2*molecule.n_orbitals - 6
+            print('warning this needs debuging for LiH - currently only works for LiHH')
+        else: 
+            active_orbitals = 2*molecule.n_orbitals
         #qubit_hamiltonian = bravyi_kitaev(fermion_hamiltonian)
         qubit_hamiltonian = symmetry_conserving_bravyi_kitaev(
             fermion_hamiltonian,
