@@ -70,7 +70,7 @@ pi = np.pi
 
 NB_SHOTS_DEFAULT = 256
 OPTIMIZATION_LEVEL_DEFAULT = 1
-FULL_LIST_DEVICES = ['ibmq_rochester', 'ibmq_paris', 'ibmq_singapore', 
+FULL_LIST_DEVICES = ['ibmq_rochester', 'ibmq_paris', 'ibmq_toronto', 'ibmq_manhattan',
             'ibmq_qasm_simulator'] # '', ibmq_poughkeepsie
 # There may be more free devices
 FREE_LIST_DEVICES = ['ibmq_16_melbourne', 
