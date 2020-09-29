@@ -1109,6 +1109,165 @@ def enforce_qubit_op_consistency(qubit_ops):
 
     return new_qops
 
+def wpo_HHLi(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[], freezeEmpt=[]):
+    """
+    Generates the qubit weighted pauli operators for a chain of H + H + Li with
+    distance d1 between leftmost H and central H, and distance d2 between
+    central H and Li.
+    Allows for freezing of occupied and empty orbitals to reduce # qubits.
+    If requested returns ground state energy and vector AFTER freezing orbitals.
+    Exact energy (without freezing orbitals) can also be requested for consistency
+    check.
+    
+    Parameters
+    ----------
+    d1 : float 
+        Distance between leftmost H and central H
+    d2 : float
+        Distance between central H and Li
+    get_gs : boolean
+        If true returns ground state energy and vector AFTER orbital freezing
+    get_exact_E : boolean
+        If true returns exact energy (no freezing orbitals)
+    freezeOcc : list of integers
+        Indices of orbitals to be frozen as occupied - [0,1] for chemical
+        reaction simulation
+    freezeEmpt : list of integers
+        Indices of orbitals to be frozen as empty - [6,7,8,9] for chemical
+        reaction simulation
+
+    Returns
+    -------
+    out : WeightedPauliOperator, ndarray if get_gs, float if get_gs, float if get_exact_E
+        Weighted pauli operator for qubit Hamiltonian, ground state vector if requested,
+        ground state energy if requested, exact ground state energy if requested
+    """
+    from openfermion import (
+            MolecularData,
+            bravyi_kitaev, 
+            symmetry_conserving_bravyi_kitaev, 
+            get_fermion_operator
+        )
+    from openfermionpyscf import run_pyscf
+    from qiskit.aqua.operators import Z2Symmetries
+    from openfermion.utils._sparse_tools import get_ground_state
+    from openfermion.transforms._conversion import get_sparse_operator
+    from openfermion.utils._operator_utils import freeze_orbitals
+    atoms='H 0 0 {}; H 0 0 {}; Li 0 0 {}'.format(-d1, 0, d2)
+    # Converts string to openfermion geometery
+    n_frozen=len(freezeOcc)+len(freezeEmpt)
+    atom_vec = atoms.split('; ')
+    open_fermion_geom = []
+    for aa in atom_vec:
+        sym = aa.split(' ')[0]
+        coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
+        open_fermion_geom.append((sym, coords))
+    basis = 'sto-6g'
+    multiplicity = 1 + len(atom_vec)%2
+    charge = 0
+    # Construct the molecule and calc overlaps
+    molecule = MolecularData(
+        geometry=open_fermion_geom, 
+        basis=basis, 
+        multiplicity=multiplicity,
+        charge=charge,
+    )
+    num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
+    molecule = run_pyscf(
+        molecule,
+    )
+    _of_molecule = molecule
+
+    # Convert result to qubit measurement stings
+    ham = molecule.get_molecular_hamiltonian()
+    fermion_hamiltonian = get_fermion_operator(ham)
+    if get_exact_E:
+        sparse_operator = get_sparse_operator(fermion_hamiltonian)
+        egse, egs=get_ground_state(sparse_operator)
+    fermion_hamiltonian = freeze_orbitals(fermion_hamiltonian, freezeOcc, freezeEmpt)
+    sparse_operator = get_sparse_operator(fermion_hamiltonian)
+    gse, gs=get_ground_state(sparse_operator)
+    qubit_hamiltonian = symmetry_conserving_bravyi_kitaev(
+        fermion_hamiltonian,
+        active_orbitals=2*molecule.n_orbitals-n_frozen,
+        active_fermions=molecule.get_n_alpha_electrons()+molecule.get_n_beta_electrons()
+    )
+    weighted_pauli_op = convert_wpo_and_openfermion(qubit_hamiltonian)
+    if get_gs:
+        dense_H = sum([p[0]*p[1].to_matrix() for p in weighted_pauli_op.paulis])
+        sparse_operator = get_sparse_operator(qubit_hamiltonian)
+        gse, gsv=get_ground_state(sparse_operator)
+        out = weighted_pauli_op, gse, gsv
+    else:
+        out = weighted_pauli_op
+    if get_exact_E:
+        out=*out, egse
+    return out
+
+def checkEHHLi(occ=[], uocc=[], d1=1, d2=2.39):
+    """
+    Lightweight version of wpo_HHLi that just returns the
+    ground state energy of the Hamiltonian with the specified 
+    orbitals frozen, useful for checking which to freeze.
+    
+    Parameters
+    ----------
+    occ : list of integers
+        Indices of orbitals to be frozen as occupied
+    uocc : list of integers
+        Indices of orbitals to be frozen as empty
+    d1 : float 
+        Distance between leftmost H and central H
+    d2 : float
+        Distance between central H and Li
+
+    Returns
+    -------
+    GSE : float
+        Ground state energy of Hamiltonian with specified distances
+        and freezing
+    """
+    from openfermion import (
+            MolecularData,
+            bravyi_kitaev, 
+            symmetry_conserving_bravyi_kitaev, 
+            get_fermion_operator
+        )
+    from openfermionpyscf import run_pyscf
+    from qiskit.aqua.operators import Z2Symmetries
+    from openfermion.utils._sparse_tools import get_ground_state
+    from openfermion.transforms._conversion import get_sparse_operator
+    atoms='H 0 0 {}; H 0 0 {}; Li 0 0 {}'.format(-d1, 0, d2)
+    # Converts string to openfermion geometery
+    atom_vec = atoms.split('; ')
+    open_fermion_geom = []
+    for aa in atom_vec:
+        sym = aa.split(' ')[0]
+        coords = tuple([float(ii) for ii in aa.split(' ')[1:]])
+        open_fermion_geom.append((sym, coords))
+    basis = 'sto-6g'
+    multiplicity = 1 + len(atom_vec)%2
+    charge = 0
+    molecule = MolecularData(
+        geometry=open_fermion_geom, 
+        basis=basis, 
+        multiplicity=multiplicity,
+        charge=charge,
+    )
+    num_particles = molecule.get_n_alpha_electrons() + molecule.get_n_beta_electrons()
+    molecule = run_pyscf(
+        molecule,
+    )
+    _of_molecule = molecule
+
+    # Convert result to qubit measurement stings
+    ham = molecule.get_molecular_hamiltonian()
+    fermion_hamiltonian = get_fermion_operator(ham)
+    fermion_h_frozen=freeze_orbitals(fermion_hamiltonian,occ,uocc)
+    sparse_operator = get_sparse_operator(fermion_h_frozen)
+    GSE=get_ground_state(sparse_operator)[0]
+    return GSE
+
 # ------------------------------------------------------
 # Hamiltonian related helper functions
 # ------------------------------------------------------
