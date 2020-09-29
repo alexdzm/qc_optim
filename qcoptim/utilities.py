@@ -1109,7 +1109,7 @@ def enforce_qubit_op_consistency(qubit_ops):
 
     return new_qops
 
-def wpo_HHLi(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[], freezeEmpt=[]):
+def get_HHLi_qubit_op(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[], freezeEmpt=[]):
     """
     Generates the qubit weighted pauli operators for a chain of H + H + Li with
     distance d1 between leftmost H and central H, and distance d2 between
@@ -1204,9 +1204,9 @@ def wpo_HHLi(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[], freezeEmpt=[
         out=*out, egse
     return out
 
-def checkEHHLi(occ=[], uocc=[], d1=1, d2=2.39):
+def check_HHLi(occ=[], uocc=[], d1=1, d2=2.39):
     """
-    Lightweight version of wpo_HHLi that just returns the
+    Lightweight version of get_HHLi_qubit_op that just returns the
     ground state energy of the Hamiltonian with the specified 
     orbitals frozen, useful for checking which to freeze.
     
