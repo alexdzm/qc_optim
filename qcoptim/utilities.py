@@ -1237,6 +1237,7 @@ def check_HHLi(occ=[], uocc=[], d1=1, d2=2.39):
     from qiskit.aqua.operators import Z2Symmetries
     from openfermion.utils._sparse_tools import get_ground_state
     from openfermion.transforms._conversion import get_sparse_operator
+    from openfermion.utils._operator_utils import freeze_orbitals
     atoms='H 0 0 {}; H 0 0 {}; Li 0 0 {}'.format(-d1, 0, d2)
     # Converts string to openfermion geometery
     atom_vec = atoms.split('; ')
