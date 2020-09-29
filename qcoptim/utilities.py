@@ -1109,7 +1109,7 @@ def enforce_qubit_op_consistency(qubit_ops):
 
     return new_qops
 
-def get_HHLi_qubit_op(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[], freezeEmpt=[]):
+def get_HHLi_qubit_op(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[0,1], freezeEmpt=[6,7,8,9]):
     """
     Generates the qubit weighted pauli operators for a chain of H + H + Li with
     distance d1 between leftmost H and central H, and distance d2 between
