@@ -1192,7 +1192,7 @@ def wpo_HHLi(d1, d2, get_gs=False, get_exact_E=False, freezeOcc=[], freezeEmpt=[
         active_orbitals=2*molecule.n_orbitals-n_frozen,
         active_fermions=molecule.get_n_alpha_electrons()+molecule.get_n_beta_electrons()
     )
-    weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
+    weighted_pauli_op = convert_wpo_and_openfermion(qubit_hamiltonian)
     if get_gs:
         dense_H = sum([p[0]*p[1].to_matrix() for p in weighted_pauli_op.paulis])
         sparse_operator = get_sparse_operator(qubit_hamiltonian)
