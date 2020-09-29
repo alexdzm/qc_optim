@@ -278,7 +278,10 @@ class AnsatzFromQasm(AnsatzFromCircuit):
                 p = qk.circuit.Parameter('R' + str(param_ct))
                 q = int(gate[2].split('[')[1].split(']')[0])
                 circ[gate[0]](p, q)
-                x_sol.append(float(gate[1]))
+                try:
+                    x_sol.append(float(gate[1]))
+                except:
+                    if gate[1] == '2pi': x_sol.append(2*np.pi)
                 param_ct+=1
             elif gate[0] in 'rx ry rz':
                 p = float(gate[1])
