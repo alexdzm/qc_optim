@@ -14,10 +14,10 @@ pi = np.pi
 # ------------------------------------------------------
 # General Qiskit related helper functions
 # ------------------------------------------------------
-method = '2d' # 'independent_plus_random_4' or '2d'
+method = '2d1.5' # 'independent_plus_random_4' or '2d'
 backend = 5
-nb_init = 15
-nb_iter = 10
+nb_init = 30
+nb_iter = 30
 shape = (8, 8)
 positionsHH = np.linspace(0.2, 2.5, shape[0])
 positionsLiH = np.linspace(0.4, 4, shape[0])
@@ -95,7 +95,7 @@ if True:
 
 
 
-wpo_list = [qc.utilities.get_H_chain_qubit_op([dx1,dx2]) for dx1 in positionsHH for dx2 in positionsLiH]
+wpo_list = [qc.utilities.get_HHLi_qubit_op(*[dx1,dx2]) for dx1 in positionsHH for dx2 in positionsLiH]
 wpo_list = qc.utilities.enforce_qubit_op_consistency(wpo_list)
 
 
@@ -114,6 +114,8 @@ bo_args = qc.utilities.gen_default_argsbo(f=lambda: 0.5,
                                           nb_init=nb_init,
                                           eval_init=False)
 bo_args['nb_iter'] = nb_iter
+bo_args['acquisition_weight'] = 5
+bo_args['acquisition_weight_lindec'] = False
 
 
 runner = qc.optimisers.ParallelRunner(cost_list,
@@ -135,6 +137,9 @@ runner.init_optimisers(results)
 print('took {:2g} s to init the {} optims from {} points'.format(time.time() - t, shape[0]**2, bo_args['initial_design_numdata']))
 
 for ii in range(bo_args['nb_iter']):
+    if ii > nb_iter * .8:
+        bo_args['acquisition_weight'] = .2
+
     t = time.time()
     runner.next_evaluation_circuits()
     print('took {:2g} s to optim acq function'.format(time.time()  - t))
@@ -157,8 +162,8 @@ opt_energies_mat = np.reshape(np.squeeze(opt_energies), shape)
 
 
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].pcolor(rescale(scf_energy),
-                  vmin = -1, vmax = 1.4)
+im = ax[0].pcolor((plt_scf),
+                  vmin = -8.6, vmax = -7)
 ax[0].set_title('log(exact energy)')
 ax[0].set_aspect('equal')
 ax[0].set_ylabel('x3-x2 (A)')
@@ -166,65 +171,59 @@ ax[0].set_xlabel('x2-x1 (A)')
 f.colorbar(im, ax=ax[0])
 
 
-im = ax[1].pcolor(rescale(opt_energies_mat),
-                  vmin = -1, vmax = 1.4)
+im = ax[1].pcolor((opt_energies_mat),
+                  vmin = -8.6, vmax = -7)
 ax[1].set_title('log(VQE energy)')
 ax[1].set_aspect('equal')
 ax[1].set_xlabel('x2-x1 (A)')
 f.colorbar(im, ax=ax[1])
 
-plt.legend
-cst = qc.cost.CostWPO
 
 #%% Save data
 # Importing and plotting data
-fname = 'h3_paris_64_init{}_iter{}_method{}_optAnsatz.dmp'.format(nb_init,nb_iter,method[-2:])
+fname = 'HHLi_sim_64_init{}_iter{}_method{}_optAnsatz.dmp'.format(nb_init,nb_iter,method[-2:])
 with open(fname, 'wb') as f:
     data = {'shape':shape,
-            'positions':positions,
+            'positions':[positionsHH, positionsLiH],
             'opt':opt_energies_mat,
-            'scf':scf_energy,
-            'optims':runner.optim_list}
+            'scf':plt_scf,
+            'circ':plt_cir}
     joblib.dump(data, f)
 
 
+#%% 
 
+fname = 'HHLi_sim_64_init15_iter10_method.5_optAnsatz.dmp'
+fname = 'HHLi_sim_64_init20_iter20_method.5_optAnsatz.dmp'
 
-#%% Loading results
-# fname = 'h3_paris_64_init25_iter12_method2d_randAns26.dmp' # measure recalc ever 80min random circ seed=26 aweful data
-
-
-# fname = 'h3_paris_100_init15_iter12_method2d.dmp'
-# fname = 'h3_paris_64_init15_iter8_method2d.dmp'
-# fname = 'h3_paris_64_init15_iter15_method2d1.5.dmp'
-fname = 'h3_paris_64_init15_iter10_method_2d.dmp' # measurement recalc every 2 hrs
-fname = 'h3_paris_64_init15_iter10_method2d_randomCirc2.dmp' # measure recalc ever 80min random circ seed=26
 
 #%% plotting results
 data = joblib.load(fname)
 scf_energy = data['scf']
 opt_energies_mat = data['opt']
 positions = data['positions']
+positionsHH = positions[0]
+positionsLiH = positions[1]
 
-rescale = lambda x: np.log(x +2)
+rescale = lambda x: np.log(x +9)
 
 
 # Plot line by line
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].plot(positions, (scf_energy))
+im = ax[0].plot(positionsLiH, (scf_energy))
 ax[0].set_title('(exact energy)')
 ax[0].set_xlabel('x2-x1 (A)')
-ax[0].legend(['d32: ' + str(round(p, 2)) for p in positions], loc='upper right')
+ax[0].legend(['HH: ' + str(round(p, 2)) for p in positionsHH], loc='upper right')
 
 
-im = ax[1].plot(positions, ((opt_energies_mat + opt_energies_mat.T)/2))
+im = ax[1].plot(positionsLiH, opt_energies_mat)
 ax[1].set_title('(VQE energy)')
 ax[1].set_xlabel('x2-x1 (A)')
 f.legend()
 
 # Plot surface
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
-im = ax[0].pcolor((scf_energy), vmin=-1.6, vmax=-.8)
+im = ax[0].pcolor((scf_energy), vmin=-9, vmax=-7)
 ax[0].set_title('SCF energy')
 ax[0].set_aspect('equal')
 ax[0].set_ylabel('x3-x2 (A)')
@@ -232,7 +231,7 @@ ax[0].set_xlabel('x2-x1 (A)')
 f.colorbar(im, ax=ax[0])
      
 
-im = ax[1].pcolor((opt_energies_mat + opt_energies_mat.T)/2, vmin = -1.6, vmax = -0.8)
+im = ax[1].pcolor(opt_energies_mat , vmin = -9, vmax = -7)
 ax[1].set_title('VQE energy: Paris')
 ax[1].set_aspect('equal')
 ax[1].set_xlabel('x2-x1 (A)')
@@ -242,119 +241,21 @@ f.colorbar(im, ax=ax[1])
 # Plot errors
 f , ax = plt.subplots(1, 2, sharey=True, figsize=(10, 4))
 
-ax[0].plot(positions, opt_energies_mat - scf_energy)
+ax[0].plot(positionsLiH, opt_energies_mat - scf_energy)
 ax[0].set_xlabel('x2-x1')
 ax[0].set_ylabel('Eopt - Eexact')
 ax[0].set_title('actual VQE error')
-f.legend(['d32:'+str(round(p, 2)) for p in positions])
+f.legend(['d32:'+str(round(p, 2)) for p in positionsHH])
+f.legend()
 
-ax[1].plot(positions, abs(opt_energies_mat - opt_energies_mat.T)/2 )
+ax[1].plot(positionsLiH, opt_energies_mat - plt_cir)
 ax[1].set_xlabel('x2-x1')
-ax[1].set_title('Antisymmetric error')
-
-
-
-
-# #%% Plotting y_ii - y_fin
-# # Set up fig stuff
-# f, ax = plt.subplots(3, 5, sharex=True, sharey=True)
-# ax = np.ravel(ax)
-
-
-# # Get optim list, and 'best' values of y (approx as last)
-# opt = runner.optim_list
-# y_last = np.squeeze([opt[ii].optimiser.Y[-1] for ii in range(shape[0]**2)]).reshape(*shape)
-# y_best = [min(opt[ii].optimiser.Y) for ii in range(shape[0]**2)]
-# y_best = np.reshape(y_best, shape)
-
-# # Gen NN mask (different iter for each point on grid)
-# if '2d' in method:
-#     x = np.ones(shape)
-#     x = np.pad(x, [1,1], mode='constant', constant_values=[0,0])
-#     y = [[0, 1, 0], [1,1, 1], [0, 1, 0]]
-#     nn_mask = convolve2d(x, y, 'valid')
-# else:
-#     nn_mask = 5*np.ones(shape)
-
-# for ii in range(bo_args['nb_iter']):
-#     these_coords = bo_args['initial_design_numdata'] + ii*nn_mask
-#     these_coords = [int(cc) for cc in np.ravel(these_coords)]
-
-#     y_ii = [opt[ii].optimiser.Y[these_coords[ii]] for ii in range(shape[0]**2)]
-#     y_ii = np.squeeze(y_ii).reshape(*shape)
-
-#     diff = np.abs(y_ii - y_last)
-
-#     im = ax[ii].pcolor(diff, vmin=0.0,vmax=2)
-#     f.colorbar(im, ax=ax[ii])
-#     ax[ii].set_title('iter' + str(ii))
-
-#     if ii > 9:
-#         ax[ii].set_xlabel('x2-x1 (au)')
-#     if ii%5==0:
-#         ax[ii].set_ylabel('x3-x2 (au)')
-# ax[5].set_ylabel('y_ii - y_last')
-
-
-
-# #%% Plotting y_best_ii - y_best
-# f, ax = plt.subplots(3, 5, sharex=True, sharey=True)
-# ax = np.ravel(ax)
-
-
-# for ii in range(bo_args['nb_iter']):
-#     these_coords = bo_args['initial_design_numdata'] + ii*nn_mask
-#     these_coords = [int(cc) for cc in np.ravel(these_coords)]
-
-
-#     y_best_ii = [min(opt[ii].optimiser.Y[:these_coords[ii]]) for ii in range(shape[0]**2)]
-#     y_best_ii = np.squeeze(y_best_ii).reshape(*shape)
-#     diff = np.abs(y_best_ii - y_best)
-
-#     im = ax[ii].pcolor(diff, vmin=0.0,vmax=2)
-#     f.colorbar(im, ax=ax[ii])
-#     ax[ii].set_title('iter' + str(ii))
-
-#     if ii > 9:
-#         ax[ii].set_xlabel('x2-x1 (au)')
-#     if ii%5==0:
-#         ax[ii].set_ylabel('x3-x2 (au)')
-# ax[5].set_ylabel('best|ii - best_all')
+ax[1].set_ylabel('Eopt - Ecirc')
+ax[1].set_title('actual VQE error')
+f.legend(['d32:'+str(round(p, 2)) for p in positionsHH])
+f.legend()
 
 
 
 
 
-# #%% Plotting y_ii
-# f, ax = plt.subplots(3, 5, sharex=True, sharey=True)
-# ax = np.ravel(ax)
-
-
-# for ii in range(bo_args['nb_iter']):
-#     these_coords = bo_args['initial_design_numdata'] + ii*nn_mask
-#     these_coords = [int(cc) for cc in np.ravel(these_coords)]
-
-#     y_ii = [opt[ii].optimiser.Y[these_coords[ii]] for ii in range(shape[0]**2)]
-#     y_ii = np.squeeze(y_ii).reshape(*shape)
-
-
-#     im = ax[ii].pcolor(rescale(y_ii), vmin=0.0,vmax=2)
-#     f.colorbar(im, ax=ax[ii])
-#     ax[ii].set_title('iter' + str(ii))
-
-#     if ii > 9:
-#         ax[ii].set_xlabel('x2-x1 (au)')
-#     if ii%5==0:
-#         ax[ii].set_ylabel('x3-x2 (au)')
-# ax[5].set_ylabel('y_ii')
-
-
-
-# #%% Importing and plotting data
-# import joblib
-# fname = 'h3_lin_circs_paris_init{}_iter{}_method{}.dmp'.format(nb_init,nb_iter,method[-2:])
-# with open(fname, 'wb') as f:
-#     data = {'ed':ed_energies_mat,
-#             'opt':opt_energies_mat,
-#             'optims':runner.optim_list}
-#     joblib.dump(data, f)
