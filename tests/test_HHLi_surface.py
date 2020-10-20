@@ -14,9 +14,9 @@ pi = np.pi
 # ------------------------------------------------------
 # General Qiskit related helper functions
 # ------------------------------------------------------
-method = '2d1.5' # 'independent_plus_random_4' or '2d'
+method = '2d4' # 'independent_plus_random_4' or '2d'
 backend = 5
-nb_init = 30
+nb_init = 100
 nb_iter = 30
 shape = (8, 8)
 positionsHH = np.linspace(0.2, 2.5, shape[0])
@@ -195,7 +195,8 @@ with open(fname, 'wb') as f:
 
 fname = 'HHLi_sim_64_init15_iter10_method.5_optAnsatz.dmp'
 fname = 'HHLi_sim_64_init20_iter20_method.5_optAnsatz.dmp'
-
+fname = 'HHLi_sim_64_init30_iter30_method.5_optAnsatz.dmp'
+fnane = 'HHLi_sim_64_init100_iter10_method.5_optAnsatz.dmp'
 
 #%% plotting results
 data = joblib.load(fname)
@@ -259,3 +260,11 @@ f.legend()
 
 
 
+
+
+x = np.zeros((10, 10))
+for ii in range(10):
+    x[ii,ii] = 5*np.random.rand() + 1
+    if ii < 9:
+        x[ii, ii+1] = 0.1
+x = x + x.T
