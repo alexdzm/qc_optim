@@ -1462,7 +1462,7 @@ class CrossFidelity(CostInterface):
         # check if comparison_results contains the crossfidelity_metadata
         # tags and if it does compare them, if these comparisons fail then
         # crash, if the crossfidelity_metadata is missing issue a warning
-        if not results is None:
+        if results is not None:
             if not type(results) is dict:
                 results = results.to_dict()
 
@@ -1514,7 +1514,9 @@ class CrossFidelity(CostInterface):
         for ii in range(self._nb_random):
 
             # make random measurment circuit
-            rand_measurement = qk.QuantumCircuit(self.ansatz.nb_qubits)
+            # (need to use the same qregs, but this is not going to be a very
+            # robust solution to that problem)
+            rand_measurement = qk.QuantumCircuit(self.ansatz.circuit.qregs[0])
             for i in range(self.ansatz.nb_qubits):
                 R = qk.quantum_info.random_unitary(2,seed=rand_state)
                 rand_measurement.append(R,[i])

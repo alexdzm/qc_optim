@@ -23,9 +23,14 @@ __all__ = [
     'BaseAnsatz',
     'TrivialAnsatz',
     'AnsatzFromFunction',
+    'AnsatzFromCircuit',
+    'AnsatzFromQasm',
     'RandomAnsatz',
     'RegularXYZAnsatz',
     'RegularU3Ansatz',
+    'RegularU2Ansatz',
+    'RegularRandomU3ParamAnsatz',
+    'RegularRandomXYZAnsatz',
     # helper functions
     'count_params_from_func',
 
@@ -179,7 +184,6 @@ class AnsatzFromFunction(AnsatzInterface):
     def nb_params(self):
         return self._nb_params
 
-
 class AnsatzFromCircuit(AnsatzInterface):
     """
     Returns instance conforming to AnsatzInterface from a single parameterised
@@ -234,8 +238,6 @@ class AnsatzFromCircuit(AnsatzInterface):
     @property
     def nb_params(self):
         return self._nb_params
-
-
 
 class AnsatzFromQasm(AnsatzFromCircuit):
     """
@@ -297,10 +299,6 @@ class AnsatzFromQasm(AnsatzFromCircuit):
         self._x_sol = x_sol
         super().__init__(c)
        
-
-
-
-
 class RandomAnsatz(BaseAnsatz):
     """ """
 
@@ -501,7 +499,6 @@ class RegularU3Ansatz(BaseAnsatz):
         
         return qc
 
-
 class RegularU2Ansatz(BaseAnsatz):
     """ """
     def __init__(self,*args,seed=None, cyclic=False):
@@ -561,7 +558,6 @@ class RegularU2Ansatz(BaseAnsatz):
             param_counter += 2
         
         return qc
-
 
 class RegularRandomU3ParamAnsatz(BaseAnsatz):
     """ 
@@ -634,7 +630,6 @@ class RegularRandomU3ParamAnsatz(BaseAnsatz):
         
         return qc
 
-
 class RegularRandomXYZAnsatz(BaseAnsatz):
     """ 
     Regular entangeling gates + random U3 unitaries per layer. Only 1 parameter per u3 unitary
@@ -705,8 +700,7 @@ class RegularRandomXYZAnsatz(BaseAnsatz):
                 qc.rz(self._params[param_counter],q)
             param_counter += 1
         return qc
-    
-    
+        
 # ------------------------------------------------------------------------------
 def count_params_from_func(ansatz):
     """ Counts the number of parameters that the ansatz function accepts"""
