@@ -897,6 +897,55 @@ def get_TFIM_qubit_op(
 
     return qubitOp
 
+def get_ATFIM_qubit_op(
+    N,
+    J=1,
+    hX=0,
+    hZ=0,
+    pbc=False,
+    ):
+    """ 
+    Construct the qubit Hamiltonian for 1d ATFIM with X and Z fields: 
+        H = \sum_{i} ( J Z_i Z_{i+1} - hX X_i - hZ Z_i )
+    for J>0.
+
+    Parameters
+    ----------
+    N : int
+        The number of spin 1/2 particles in the chain
+    J : float, default 1.
+        Ising interaction strength
+    hX : float, default 1.
+        X-field strength
+    hZ : float, default 1.
+        Z-field strength
+    pbc : boolean, optional default False
+        Set the boundary conditions of the 1d spin chain
+
+    Returns
+    -------
+    qubitOp : qiskit.aqua.operators.WeightedPauliOperator
+        Qiskit representation of the qubit Hamiltonian
+    """
+
+    pauli_terms = []
+
+    # ZZ terms
+    assert J>0, "For the ATFIM model the Ising coupling (J) must be positive."
+    pauli_terms += [ (J,Pauli.from_label('I'*(i)+'ZZ'+'I'*((N-1)-(i+1)))) for i in range(N-1) ]
+    # optional periodic boundary condition term
+    if pbc:
+        pauli_terms += [ (J,Pauli.from_label('Z'+'I'*(N-2)+'Z')) ]
+    
+    # X terms
+    pauli_terms += [ (-hX,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
+    # Z terms
+    pauli_terms += [ (-hZ,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
+
+    qubitOp = WeightedPauliOperator(pauli_terms)
+
+    return qubitOp
+
 def get_KH1_qubit_op(Jx,Jy,Jz,v=1.,Jrand=0.,seed=0):
     """ 
     Construct the qubit Hamiltonian for one loop of the Kitaev Ladder:
