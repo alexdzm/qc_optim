@@ -42,7 +42,11 @@ __all__ = [
     'get_TFIM_qubit_op',
     'get_KH1_qubit_op',
     'get_KH2_qubit_op',
-    'enforce_qubit_op_consistency'
+    'enforce_qubit_op_consistency',
+    # quimb TN utilities
+    'parse_qasm_qk',
+    'qTNfromQASM',
+    'qTNtoQk',
 ]
 import pdb
 import dill
@@ -54,6 +58,9 @@ import os, socket, sys
 import numpy as np
 import qiskit as qk
 import matplotlib.pyplot as plt
+
+import quimb as qu
+import quimb.tensor as qtn
 
 from qiskit.quantum_info import Pauli
 # qiskit noise modules
@@ -1769,3 +1776,116 @@ def parsePiString(inString):
             start=float(start[:-1])
         outString = str(start*mid*end)
     return outString
+
+# ------------------------------------------------------
+# Quimb TN related functions
+# ------------------------------------------------------
+
+def parse_qasm_qk(qasm):
+    """
+    Parse qasm from a string.
+    """
+    lns = qasm.split(';\n')
+    n = int(lns[2][7:-1])
+    gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
+    return {'n': n, 'gates': gates, 'n_gates': len(gates)}
+
+def sTrim(st):
+    #used for formatting qasm string to qtn format
+    if st[0]=="q":
+        st=st.replace("q[","").replace("]","")
+    return st
+
+# functions for applying gates to qtn, if the rotations passed a 
+# value they'll add non-parameterized gates, otherwise (as is 
+# more useful for us) they'll add parameterised ones
+
+def apply_X(psi, i):
+    psi.apply_gate('X',int(sTrim(i)))
+
+def apply_Y(psi, i):
+    psi.apply_gate('Y',int(sTrim(i)))
+
+def apply_Z(psi, i):
+    psi.apply_gate('Z',int(sTrim(i)))
+
+def apply_CNOT(psi, i, j):
+    psi.apply_gate('CNOT', int(sTrim(i)), int(sTrim(j)))
+
+def apply_Rx(psi, theta, i):
+    try:
+        psi.apply_gate('RX',float(theta), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('RX',qu.randn(1,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True)
+
+def apply_Ry(psi, theta, i):
+    try:
+        psi.apply_gate('RY',float(theta), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('RY',qu.randn(1,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True)
+
+def apply_Rz(psi, theta, i):
+    try:
+        psi.apply_gate('RZ', float(theta), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('RZ',qu.randn(1,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True) 
+
+def apply_U3(psi, theta, phi, lamda, i):
+    try:
+        psi.apply_gate('U3',float(theta), float(phi), float(lamda), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('U3',*qu.randn(3,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True) 
+
+def apply_U2(psi, phi, lamda, i):
+    return apply_U3(psi,np.pi/2.,phi,lamda,i)
+
+def apply_U1(psi, lamda, i):
+    return apply_U3(psi,0,0,lamda,i)
+
+select_apply = {
+    'x': apply_X,
+    'y': apply_Y,
+    'z': apply_Z,
+    'rx': apply_Rx,
+    'ry': apply_Ry,
+    'rz': apply_Rz,
+    'cx': apply_CNOT,
+    'u3': apply_U3,
+    'u2': apply_U2,
+    'u1': apply_U1,
+}
+
+def apply_circuit(circ, gates):
+    #apply the gates in gates to circ
+    for gate in gates:
+        which, args = gate[0], gate[1:]
+        if which in ['barrier','id']:
+            continue
+        fn = select_apply[which]
+        fn(circ, *args)
+    # return the final circuit
+    return circ
+
+def qTNfromQASM(qasm):
+    qkdict=parse_qasm_qk(qasm)
+    circ=qtn.Circuit(qkdict['n'], tags=['PSI0'])
+    circ=apply_circuit(circ, qkdict['gates'])
+    return circ
+
+def qTNtoQk(tn):
+    circ=QuantumCircuit(tn.N)
+    gates=tn.gates
+    for gate in gates:
+        if gate[0]=='RX':
+            circ.rx(*gate[1:])
+        if gate[0]=='RY':
+            circ.ry(*gate[1:])  
+        if gate[0]=='RZ':
+            circ.rz(*gate[1:])
+        if gate[0]=='CNOT':
+            circ.cx(*gate[1:])
+        if gate[0]=='CX':
+            circ.cx(*gate[1:])
+        if gate[0]=='U3':
+            circ.u3(*gate[1:])
+    return circ
