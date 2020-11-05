@@ -48,12 +48,15 @@ __all__ = [
     'qTNfromQASM',
     'qTNtoQk',
 ]
+import os
+import re
+import sys
 import pdb
 import dill
+import copy
 import string
 import random
-import copy
-import os, socket, sys
+import socket
 
 import numpy as np
 import qiskit as qk
@@ -1786,15 +1789,13 @@ def parse_qasm_qk(qasm):
     Parse qasm from a string.
     """
     lns = qasm.split(';\n')
-    n = int(lns[2][7:-1])
+    n = int(re.findall("\[(.*?)\]", lns[2])[0])
     gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
     return {'n': n, 'gates': gates, 'n_gates': len(gates)}
 
 def sTrim(st):
     #used for formatting qasm string to qtn format
-    if st[0]=="q":
-        st=st.replace("q[","").replace("]","")
-    return st
+    return re.findall("\[(.*?)\]", st)[0]
 
 # functions for applying gates to qtn, if the rotations passed a 
 # value they'll add non-parameterized gates, otherwise (as is 
