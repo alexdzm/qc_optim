@@ -1790,7 +1790,11 @@ def parse_qasm_qk(qasm):
     """
     lns = qasm.split(';\n')
     n = int(re.findall("\[(.*?)\]", lns[2])[0])
-    gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
+    # The bracket replaces expose the arguments of rotations, the comma 
+    # replacement separates the qubit args of a CNOT. The weird way the
+    # bracket replacements are implemented protects against pathological
+    # cases like: 'ry(7/(5*pi)) logicals[2];' (real example)
+    gates = [l.replace('(',' ',1)[::-1].replace(')','',1)[::-1].replace(',',' ').split(' ') for l in lns[3:] if l]
     return {'n': n, 'gates': gates, 'n_gates': len(gates)}
 
 def sTrim(st):
