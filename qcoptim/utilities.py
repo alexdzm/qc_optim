@@ -950,7 +950,7 @@ def get_ATFIM_qubit_op(
     # X terms
     pauli_terms += [ (-hX,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
     # Z terms
-    pauli_terms += [ (-hZ,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
+    pauli_terms += [ (-hZ,Pauli.from_label('I'*(i)+'Z'+'I'*(N-(i+1)))) for i in range(N) ]
 
     qubitOp = WeightedPauliOperator(pauli_terms)
 
