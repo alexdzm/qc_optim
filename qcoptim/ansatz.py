@@ -36,6 +36,7 @@ __all__ = [
 
 ]
 
+import re
 import abc
 import pdb
 import sys
