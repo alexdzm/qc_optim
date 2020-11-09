@@ -1302,6 +1302,8 @@ def _parse_qasm_qk(qasm):
                     float(prm)
                 except:
                     try:
+                        if prm=='2pi':
+                            prm='2*pi'
                         gate[i+1]=str(eval(prm)) # Using eval instead of custom code. str is to make everything type consistent
                     except:
                         pass
