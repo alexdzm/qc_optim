@@ -141,7 +141,7 @@ class MethodBO(Method):
             x_new = initial_design(self.optimiser.initial_design_type, self.optimiser.space, self._nb_init)
         return x_new
     
-    def update(self, x_new, y_new):
+    def update(self, x_new, y_new, update_model=True):
         """
         Updates the interal state of the optimiser with the data provided
         TODO: User better method to update internal model
@@ -150,6 +150,7 @@ class MethodBO(Method):
         -------------
         x_new: Parameter points that were requested/provided
         y_new: Cost functino evalutations for those parameter points
+        update_model: boolean, can be set to false for debugging
         """
         #raise Warning('Need to fix dims: can currently only update one at a time')
         x_new = np.atleast_2d(x_new)
@@ -161,7 +162,8 @@ class MethodBO(Method):
             self.optimiser.X = np.vstack((self.optimiser.X, x_new))
             self.optimiser.Y = np.vstack((self.optimiser.Y, y_new))
         # update
-        self.optimiser._update_model(self.optimiser.normalization_type)                
+        if update_model:
+            self.optimiser._update_model(self.optimiser.normalization_type)                
         if(self._acq_weights_update): 
             self._update_weights(self.optimiser)
         
@@ -690,7 +692,7 @@ class ParallelRunner():
         return results
                
     
-    def init_optimisers(self, results_obj = None): 
+    def init_optimisers(self, results_obj=None, update_model=True): 
         """ 
         Take results object to initalise the internal optimisers 
 
@@ -711,7 +713,7 @@ class ParallelRunner():
         else:
             sharing_matrix = [(cc,cc,run) for cc in range(nb_optim) for run in range(nb_init)]
         #print(sharing_matrix)
-        self.update(results_obj, sharing_matrix)
+        self.update(results_obj, sharing_matrix, update_model=update_model)
         self._evaluated_init = True
 
     def next_evaluation_circuits(self):
@@ -757,7 +759,7 @@ class ParallelRunner():
         return circs_to_exec
             
     
-    def update(self, results_obj = None, sharing_matrix = None, filter_function = None):
+    def update(self, results_obj = None, sharing_matrix = None, filter_function = None, update_model=True ):
         """ 
         Update the internal state of the optimisers, currently specific
         to Bayesian optimisers
@@ -766,6 +768,7 @@ class ParallelRunner():
         ----------
         results_obj : Qiskit results obj
             The experiment results to use
+        update_model : boolean, can be set to false for debugging
         """
         if results_obj == None:
             results_obj = self._last_results_obj
@@ -786,7 +789,7 @@ class ParallelRunner():
                     x_stack = np.vstack((x_stack,x))
                     y_stack = np.vstack((y_stack,y))
                 else:
-                    self.optim_list[prev_evl].update(x_stack, y_stack)
+                    self.optim_list[prev_evl].update(x_stack, y_stack, update_model=update_model)
                     prev_evl = evl
                     x_stack = np.atleast_2d(x)
                     y_stack = np.atleast_2d(y)
@@ -794,7 +797,7 @@ class ParallelRunner():
         # y_stack = y_stack[y_stack>0.95 min(y_stack)]
         # x_stack = x_stack[y_stack>0.95 min(y_stack)]
         # clean-up (if this isn't here the last optim won't ever get updated)
-        self.optim_list[prev_evl].update(x_stack, y_stack)
+        self.optim_list[prev_evl].update(x_stack, y_stack, update_model=update_model)
 
     
     def shot_noise(self, x_new, nb_trials = 8):
