@@ -44,7 +44,7 @@ __all__ = [
     'get_KH2_qubit_op',
     'enforce_qubit_op_consistency',
     # quimb TN utilities
-    'parse_qasm_qk',
+    # 'parse_qasm_qk',
     'qTNfromQASM',
     'qTNtoQk',
 ]
@@ -74,6 +74,8 @@ from qiskit.providers.aer.noise.errors import ReadoutError
 from qiskit.chemistry import FermionicOperator
 from qiskit.chemistry.drivers import PySCFDriver, UnitsType
 from qiskit.aqua.operators import Z2Symmetries, WeightedPauliOperator
+
+from . import ansatz
 
 NoneType = type(None)
 pi = np.pi
@@ -1716,32 +1718,32 @@ def convert_to_settings_and_weights(operator):
 # General Qiskit related helper functions
 # ------------------------------------------------------
 
-def parse_qasm_qk(qasm):
-    """
-    Parse qasm string of a circuit into a more manageable format (currently
-    doesn't support give measurements).
+# def parse_qasm_qk(qasm):
+#     """
+#     Parse qasm string of a circuit into a more manageable format (currently
+#     doesn't support give measurements).
     
-    Parameters
-    ----------
-    qasm : string
-        qasm string in qiskit format E.G.
-    'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nrx(pi/2) q[0];\nrz(pi/2) q[0];
-    \nrx(pi/2) q[1];\nrz(3.1399274) q[1];\nrx(2.0257901) q[2];\nrz(1.2246784) q[2];
-    \nrx(4.038182) q[3];\nrz(4.1847424) q[3];\ncz q[0],q[1];\ncz q[1],q[2];
-    \ncz q[2],q[3];\nrz(0.0016695663) q[1];\nrx(3*pi/2) q[1];\nrz(3*pi/2) q[1];
-    \nrz(5.8099307) q[2];\nrx(1.5707955) q[2];\nrz(0.53339077) q[2];\ncz q[3],q[0];
-    \nrz(2.098443) q[3];\nrx(pi/2) q[3];\ncz q[2],q[3];\nrz(5.7497984) q[2];
-    \nrx(pi/2) q[2];\n'
+#     Parameters
+#     ----------
+#     qasm : string
+#         qasm string in qiskit format E.G.
+#     'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nrx(pi/2) q[0];\nrz(pi/2) q[0];
+#     \nrx(pi/2) q[1];\nrz(3.1399274) q[1];\nrx(2.0257901) q[2];\nrz(1.2246784) q[2];
+#     \nrx(4.038182) q[3];\nrz(4.1847424) q[3];\ncz q[0],q[1];\ncz q[1],q[2];
+#     \ncz q[2],q[3];\nrz(0.0016695663) q[1];\nrx(3*pi/2) q[1];\nrz(3*pi/2) q[1];
+#     \nrz(5.8099307) q[2];\nrx(1.5707955) q[2];\nrz(0.53339077) q[2];\ncz q[3],q[0];
+#     \nrz(2.098443) q[3];\nrx(pi/2) q[3];\ncz q[2],q[3];\nrz(5.7497984) q[2];
+#     \nrx(pi/2) q[2];\n'
 
-    Returns
-    -------
-    circ_info : dict
-        Dictionary of information about circuit described by qasm string, contains
-        'n' - number of qubits, 'gates' - list of gates in circuit in form 
-        ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
-        circuit.
-    """
-    raise NotImplementedError("Function moved into ansatz")
+#     Returns
+#     -------
+#     circ_info : dict
+#         Dictionary of information about circuit described by qasm string, contains
+#         'n' - number of qubits, 'gates' - list of gates in circuit in form 
+#         ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
+#         circuit.
+#     """
+#     raise NotImplementedError("Function moved into ansatz")
 
 def parsePiString(inString):
     """
@@ -1784,18 +1786,18 @@ def parsePiString(inString):
 # Quimb TN related functions
 # ------------------------------------------------------
 
-def parse_qasm_qk(qasm):
-    """
-    Parse qasm from a string.
-    """
-    lns = qasm.split(';\n')
-    n = int(re.findall("\[(.*?)\]", lns[2])[0])
-    # The bracket replaces expose the arguments of rotations, the comma 
-    # replacement separates the qubit args of a CNOT. The weird way the
-    # bracket replacements are implemented protects against pathological
-    # cases like: 'ry(7/(5*pi)) logicals[2];' (real example)
-    gates = [l.replace('(',' ',1)[::-1].replace(')','',1)[::-1].replace(',',' ').split(' ') for l in lns[3:] if l]
-    return {'n': n, 'gates': gates, 'n_gates': len(gates)}
+# def parse_qasm_qk(qasm):
+#     """
+#     Parse qasm from a string.
+#     """
+#     lns = qasm.split(';\n')
+#     n = int(re.findall("\[(.*?)\]", lns[2])[0])
+#     # The bracket replaces expose the arguments of rotations, the comma 
+#     # replacement separates the qubit args of a CNOT. The weird way the
+#     # bracket replacements are implemented protects against pathological
+#     # cases like: 'ry(7/(5*pi)) logicals[2];' (real example)
+#     gates = [l.replace('(',' ',1)[::-1].replace(')','',1)[::-1].replace(',',' ').split(' ') for l in lns[3:] if l]
+#     return {'n': n, 'gates': gates, 'n_gates': len(gates)}
 
 def sTrim(st):
     #used for formatting qasm string to qtn format
@@ -1872,7 +1874,7 @@ def apply_circuit(circ, gates):
     return circ
 
 def qTNfromQASM(qasm):
-    qkdict=parse_qasm_qk(qasm)
+    qkdict=ansatz._parse_qasm_qk(qasm)
     circ=qtn.Circuit(qkdict['n'], tags=['PSI0'])
     circ=apply_circuit(circ, qkdict['gates'])
     return circ
