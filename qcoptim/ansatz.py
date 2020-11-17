@@ -36,6 +36,7 @@ __all__ = [
 
 ]
 
+import re
 import abc
 import pdb
 import sys
@@ -1292,8 +1293,12 @@ def _parse_qasm_qk(qasm):
         circuit.
     """
     lns = qasm.split(';\n')
-    n = int(lns[2][7:-1])
-    gates = [l.replace("("," ").replace(")","").replace(","," ").split(" ") for l in lns[3:] if l]
+    n = int(re.findall("\[(.*?)\]", lns[2])[0])
+    # The bracket replaces expose the arguments of rotations, the comma 
+    # replacement separates the qubit args of a CNOT. The weird way the
+    # bracket replacements are implemented protects against pathological
+    # cases like: 'ry(7/(5*pi)) logicals[2];' (real example)
+    gates = [l.replace('(',' ',1)[::-1].replace(')','',1)[::-1].replace(',',' ').split(' ') for l in lns[3:] if l]
     pi = np.pi # (Don't listen to linter - needed for eval(prm) ~10 lines down)
     for gate in gates:
         if gate[0] in 'rx ry rz':
