@@ -1786,6 +1786,25 @@ def parsePiString(inString):
 # Quimb TN related functions
 # ------------------------------------------------------
 
+class FakeQuantumInstance(object):
+    """
+    """
+    def __init__(self):
+        """ """
+        self.backend = 'quimb'
+        self.is_statevector = True
+
+    def transpile(self,circs):
+        """ do nothing """
+        return circs
+
+    def execute(self,list_of_dicts,had_transpiled=False):
+        """ convert list of dicts to single dict """
+        out_dict = {}
+        for d in list_of_dicts:
+            out_dict.update(d)
+        return out_dict
+
 # def parse_qasm_qk(qasm):
 #     """
 #     Parse qasm from a string.
