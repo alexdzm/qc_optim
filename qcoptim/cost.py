@@ -58,6 +58,7 @@ import copy
 
 import numpy as np
 import scipy as sp
+import quimb as qu
 
 import qiskit as qk
 from qiskit import QiskitError
@@ -1367,8 +1368,57 @@ class CostWPO(CostInterface):
         eig = eig.run()
         return np.squeeze(abs(eig.eigenvalues))
         
-        
+class CostWPOquimb(CostWPO):
 
+    def bind_params_to_meas(self,params=None,params_names=None):
+        """
+        """
+        return [{params_names:params}]
+
+    def evaluate_cost(
+        self, 
+        results,
+        name='',
+        real_part=True,
+        **kwargs,
+        ):
+        """
+        Parameters
+        ----------
+        results : dict
+            Pairs name:pt 
+        """
+
+        # bind ansatz circuit at current param point
+        param_pt = results[name]
+        bound_circ = self.ansatz.circuit.bind_parameters(dict(zip(self.ansatz.params,param_pt)))
+        # convert to TN
+        tn_of_ansatz = ut.qTNfromQASM(bound_circ.qasm())
+
+        # first time need to unpack wpo into quimb form
+        if not hasattr(self,'measurement_ops'):
+            # total hack and reliant on exact form of `.print_details()` string, but works currently
+            self.pauli_weights = [ np.complex128(l.split('\t')[1]) for l in self.grouped_weighted_operators.print_details().split('\n') if len(l)>0 and not l[0]=='T' ]
+            pauli_strings = [ l.split('\t')[0] for l in self.grouped_weighted_operators.print_details().split('\n') if len(l)>0 and not l[0]=='T' ]
+            self.measurement_ops = [ qu.kron(*[ qu.pauli(i) for i in p ]) for p in pauli_strings ]
+
+        return np.sum(
+            np.real(
+                np.array(tn_of_ansatz.local_expectation(
+                    self.measurement_ops,
+                    where=tuple(range(self.ansatz.nb_qubits)),)
+                ) * self.pauli_weights)
+            )
+
+    def evaluate_cost_and_std(
+        self, 
+        results, 
+        name='',
+        real_part=True,
+        ):
+        """
+        """
+        return self.evaluate_cost(results,name,real_part,),0.
 
 #======================#
 # Cross-fidelity class

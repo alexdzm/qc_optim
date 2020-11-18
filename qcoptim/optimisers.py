@@ -459,12 +459,12 @@ class ParallelRunner():
         Generate the sharing tuples based on sharing mode
         """
         nb_optim = len(self.optim_list)
-        if self.method == 'shared':
+        if self.method=='shared':
             return [(ii, jj, jj) for ii in range(nb_optim) for jj in range(nb_optim)]
-        elif self.method == 'independent':
+        elif self.method=='independent':
             #return [(ii, ii, ii) for ii in range(nb_optim)]
             return [(ii, ii, jj) for ii, opt in enumerate(self.optim_list) for jj in range(opt._nb_request)]
-        elif self.method == 'left':
+        elif (self.method=='left') or (self.method=='left_random'):
             tuples = []
             for consumer_idx in range(nb_optim):
                 for generator_idx in range(nb_optim):
@@ -479,7 +479,7 @@ class ParallelRunner():
             # sanity check
             assert len(tuples)==nb_optim*nb_optim
             return tuples
-        elif self.method == 'right':
+        elif (self.method=='right') or (self.method=='right_random'):
             tuples = []
             for consumer_idx in range(nb_optim):
                 for generator_idx in range(nb_optim):
@@ -533,6 +533,9 @@ class ParallelRunner():
             n_points = int(self.method.split('_')[-1])
             assert self.optim_list[0]._nb_request == 1, "Currently this only works for padding out single optimisers"
             return [(ii, ii, jj) for ii, opt in enumerate(self.optim_list) for jj in range(n_points)]
+
+        else:
+            raise ValueError('Error generating sharing matrix. Do not recognise info sharing mode: '+f'{self.method}')
          
 
     def _gen_padding_params(self, x_new):
@@ -576,30 +579,34 @@ class ParallelRunner():
                 # get the points that the two optimsers indexed by
                 # (`consumer_idx`==`requester_idx`) and `pt_idx` chose for their evals
                 
-                # Replaced by Kiran
-                # generator_pt = self._parallel_x[requester_idx,requester_idx]
-                # pt = self._parallel_x[pt_idx,pt_idx]
-                generator_pt = x_new[requester_idx][0]
-                pt = x_new[pt_idx][0]
-                # separation between the points
-                dist = _find_min_dist(generator_pt,pt)
-                
-                # generate random vector in N-d space then scale it to have length we want, 
-                # using 'Hypersphere Point Picking' Gaussian approach
-                random_displacement = np.random.normal(size=self.cost_objs[requester_idx].ansatz.nb_params)
-                random_displacement = random_displacement * dist/np.sqrt(np.sum(random_displacement**2))
-                # element-wise modulo 2\pi
-                new_pt = np.mod(generator_pt+random_displacement,2*np.pi)
-                x_new_mat[requester_idx][pt_idx] = new_pt
-                
-                # make new circuit now done in gen_circ_from_params
-                # this_id = ut.gen_random_str(8)
-                # named_circs = ut.prefix_to_names(self.cost_objs[requester_idx].meas_circuits, 
-                #     this_id)
-                # circs_to_exec += cost.bind_params(named_circs, new_pt, 
-                #     self.cost_objs[requester_idx].ansatz.params)
-                # self._parallel_id[requester_idx,pt_idx] = this_id
-                # self._parallel_x[requester_idx,pt_idx] = new_pt
+                if (self.method=='left_random') or (self.method=='right_random'):
+                    nb_params = self.cost_objs[consumer_idx].nb_params
+                    x_new_mat[requester_idx][pt_idx] = 2*pi*np.random.rand(nb_params)
+                else:
+                    # Replaced by Kiran
+                    # generator_pt = self._parallel_x[requester_idx,requester_idx]
+                    # pt = self._parallel_x[pt_idx,pt_idx]
+                    generator_pt = x_new[requester_idx][0]
+                    pt = x_new[pt_idx][0]
+                    # separation between the points
+                    dist = _find_min_dist(generator_pt,pt)
+                    
+                    # generate random vector in N-d space then scale it to have length we want, 
+                    # using 'Hypersphere Point Picking' Gaussian approach
+                    random_displacement = np.random.normal(size=self.cost_objs[requester_idx].ansatz.nb_params)
+                    random_displacement = random_displacement * dist/np.sqrt(np.sum(random_displacement**2))
+                    # element-wise modulo 2\pi
+                    new_pt = np.mod(generator_pt+random_displacement,2*np.pi)
+                    x_new_mat[requester_idx][pt_idx] = new_pt
+                    
+                    # make new circuit now done in gen_circ_from_params
+                    # this_id = ut.gen_random_str(8)
+                    # named_circs = ut.prefix_to_names(self.cost_objs[requester_idx].meas_circuits, 
+                    #     this_id)
+                    # circs_to_exec += cost.bind_params(named_circs, new_pt, 
+                    #     self.cost_objs[requester_idx].ansatz.params)
+                    # self._parallel_id[requester_idx,pt_idx] = this_id
+                    # self._parallel_x[requester_idx,pt_idx] = new_pt
         return x_new_mat
 
 

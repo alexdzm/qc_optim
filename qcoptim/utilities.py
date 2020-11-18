@@ -42,18 +42,28 @@ __all__ = [
     'get_TFIM_qubit_op',
     'get_KH1_qubit_op',
     'get_KH2_qubit_op',
-    'enforce_qubit_op_consistency'
+    'enforce_qubit_op_consistency',
+    # quimb TN utilities
+    # 'parse_qasm_qk',
+    'qTNfromQASM',
+    'qTNtoQk',
 ]
+import os
+import re
+import sys
 import pdb
 import dill
+import copy
 import string
 import random
-import copy
-import os, socket, sys
+import socket
 
 import numpy as np
 import qiskit as qk
 import matplotlib.pyplot as plt
+
+import quimb as qu
+import quimb.tensor as qtn
 
 from qiskit.quantum_info import Pauli
 # qiskit noise modules
@@ -64,6 +74,8 @@ from qiskit.providers.aer.noise.errors import ReadoutError
 from qiskit.chemistry import FermionicOperator
 from qiskit.chemistry.drivers import PySCFDriver, UnitsType
 from qiskit.aqua.operators import Z2Symmetries, WeightedPauliOperator
+
+from . import ansatz
 
 NoneType = type(None)
 pi = np.pi
@@ -940,7 +952,7 @@ def get_ATFIM_qubit_op(
     # X terms
     pauli_terms += [ (-hX,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
     # Z terms
-    pauli_terms += [ (-hZ,Pauli.from_label('I'*(i)+'X'+'I'*(N-(i+1)))) for i in range(N) ]
+    pauli_terms += [ (-hZ,Pauli.from_label('I'*(i)+'Z'+'I'*(N-(i+1)))) for i in range(N) ]
 
     qubitOp = WeightedPauliOperator(pauli_terms)
 
@@ -1706,32 +1718,32 @@ def convert_to_settings_and_weights(operator):
 # General Qiskit related helper functions
 # ------------------------------------------------------
 
-def parse_qasm_qk(qasm):
-    """
-    Parse qasm string of a circuit into a more manageable format (currently
-    doesn't support give measurements).
+# def parse_qasm_qk(qasm):
+#     """
+#     Parse qasm string of a circuit into a more manageable format (currently
+#     doesn't support give measurements).
     
-    Parameters
-    ----------
-    qasm : string
-        qasm string in qiskit format E.G.
-    'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nrx(pi/2) q[0];\nrz(pi/2) q[0];
-    \nrx(pi/2) q[1];\nrz(3.1399274) q[1];\nrx(2.0257901) q[2];\nrz(1.2246784) q[2];
-    \nrx(4.038182) q[3];\nrz(4.1847424) q[3];\ncz q[0],q[1];\ncz q[1],q[2];
-    \ncz q[2],q[3];\nrz(0.0016695663) q[1];\nrx(3*pi/2) q[1];\nrz(3*pi/2) q[1];
-    \nrz(5.8099307) q[2];\nrx(1.5707955) q[2];\nrz(0.53339077) q[2];\ncz q[3],q[0];
-    \nrz(2.098443) q[3];\nrx(pi/2) q[3];\ncz q[2],q[3];\nrz(5.7497984) q[2];
-    \nrx(pi/2) q[2];\n'
+#     Parameters
+#     ----------
+#     qasm : string
+#         qasm string in qiskit format E.G.
+#     'OPENQASM 2.0;\ninclude "qelib1.inc";\nqreg q[4];\nrx(pi/2) q[0];\nrz(pi/2) q[0];
+#     \nrx(pi/2) q[1];\nrz(3.1399274) q[1];\nrx(2.0257901) q[2];\nrz(1.2246784) q[2];
+#     \nrx(4.038182) q[3];\nrz(4.1847424) q[3];\ncz q[0],q[1];\ncz q[1],q[2];
+#     \ncz q[2],q[3];\nrz(0.0016695663) q[1];\nrx(3*pi/2) q[1];\nrz(3*pi/2) q[1];
+#     \nrz(5.8099307) q[2];\nrx(1.5707955) q[2];\nrz(0.53339077) q[2];\ncz q[3],q[0];
+#     \nrz(2.098443) q[3];\nrx(pi/2) q[3];\ncz q[2],q[3];\nrz(5.7497984) q[2];
+#     \nrx(pi/2) q[2];\n'
 
-    Returns
-    -------
-    circ_info : dict
-        Dictionary of information about circuit described by qasm string, contains
-        'n' - number of qubits, 'gates' - list of gates in circuit in form 
-        ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
-        circuit.
-    """
-    raise NotImplementedError("Function moved into ansatz")
+#     Returns
+#     -------
+#     circ_info : dict
+#         Dictionary of information about circuit described by qasm string, contains
+#         'n' - number of qubits, 'gates' - list of gates in circuit in form 
+#         ['gate_type', *parameters, *qubit(s)], 'n_gates' - number of gates in
+#         circuit.
+#     """
+#     raise NotImplementedError("Function moved into ansatz")
 
 def parsePiString(inString):
     """
@@ -1769,3 +1781,118 @@ def parsePiString(inString):
             start=float(start[:-1])
         outString = str(start*mid*end)
     return outString
+
+# ------------------------------------------------------
+# Quimb TN related functions
+# ------------------------------------------------------
+
+# def parse_qasm_qk(qasm):
+#     """
+#     Parse qasm from a string.
+#     """
+#     lns = qasm.split(';\n')
+#     n = int(re.findall("\[(.*?)\]", lns[2])[0])
+#     # The bracket replaces expose the arguments of rotations, the comma 
+#     # replacement separates the qubit args of a CNOT. The weird way the
+#     # bracket replacements are implemented protects against pathological
+#     # cases like: 'ry(7/(5*pi)) logicals[2];' (real example)
+#     gates = [l.replace('(',' ',1)[::-1].replace(')','',1)[::-1].replace(',',' ').split(' ') for l in lns[3:] if l]
+#     return {'n': n, 'gates': gates, 'n_gates': len(gates)}
+
+def sTrim(st):
+    #used for formatting qasm string to qtn format
+    return re.findall("\[(.*?)\]", st)[0]
+
+# functions for applying gates to qtn, if the rotations passed a 
+# value they'll add non-parameterized gates, otherwise (as is 
+# more useful for us) they'll add parameterised ones
+
+def apply_X(psi, i):
+    psi.apply_gate('X',int(sTrim(i)))
+
+def apply_Y(psi, i):
+    psi.apply_gate('Y',int(sTrim(i)))
+
+def apply_Z(psi, i):
+    psi.apply_gate('Z',int(sTrim(i)))
+
+def apply_CNOT(psi, i, j):
+    psi.apply_gate('CNOT', int(sTrim(i)), int(sTrim(j)))
+
+def apply_Rx(psi, theta, i):
+    try:
+        psi.apply_gate('RX',float(theta), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('RX',qu.randn(1,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True)
+
+def apply_Ry(psi, theta, i):
+    try:
+        psi.apply_gate('RY',float(theta), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('RY',qu.randn(1,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True)
+
+def apply_Rz(psi, theta, i):
+    try:
+        psi.apply_gate('RZ', float(theta), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('RZ',qu.randn(1,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True) 
+
+def apply_U3(psi, theta, phi, lamda, i):
+    try:
+        psi.apply_gate('U3',float(theta), float(phi), float(lamda), int(sTrim(i)))
+    except ValueError:
+        psi.apply_gate('U3',*qu.randn(3,dist='uniform', scale=2*qu.pi), int(sTrim(i)), parametrize=True) 
+
+def apply_U2(psi, phi, lamda, i):
+    return apply_U3(psi,np.pi/2.,phi,lamda,i)
+
+def apply_U1(psi, lamda, i):
+    return apply_U3(psi,0,0,lamda,i)
+
+select_apply = {
+    'x': apply_X,
+    'y': apply_Y,
+    'z': apply_Z,
+    'rx': apply_Rx,
+    'ry': apply_Ry,
+    'rz': apply_Rz,
+    'cx': apply_CNOT,
+    'u3': apply_U3,
+    'u2': apply_U2,
+    'u1': apply_U1,
+}
+
+def apply_circuit(circ, gates):
+    #apply the gates in gates to circ
+    for gate in gates:
+        which, args = gate[0], gate[1:]
+        if which in ['barrier','id']:
+            continue
+        fn = select_apply[which]
+        fn(circ, *args)
+    # return the final circuit
+    return circ
+
+def qTNfromQASM(qasm):
+    qkdict=ansatz._parse_qasm_qk(qasm)
+    circ=qtn.Circuit(qkdict['n'], tags=['PSI0'])
+    circ=apply_circuit(circ, qkdict['gates'])
+    return circ
+
+def qTNtoQk(tn):
+    circ=QuantumCircuit(tn.N)
+    gates=tn.gates
+    for gate in gates:
+        if gate[0]=='RX':
+            circ.rx(*gate[1:])
+        if gate[0]=='RY':
+            circ.ry(*gate[1:])  
+        if gate[0]=='RZ':
+            circ.rz(*gate[1:])
+        if gate[0]=='CNOT':
+            circ.cx(*gate[1:])
+        if gate[0]=='CX':
+            circ.cx(*gate[1:])
+        if gate[0]=='U3':
+            circ.u3(*gate[1:])
+    return circ
