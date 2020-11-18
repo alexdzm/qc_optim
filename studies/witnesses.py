@@ -156,7 +156,7 @@ inst = bem.gen_instance_from_current(1, 0)
 inst_exact = bem.gen_instance_from_current(2**13, 0)
 
 creator = qc.ansatz._SandwitchAnsatzes()
-ghz_circ = creator.GHZ_plus_rotation(nb_qubits=6, 
+ghz_circ = creator.GHZ_plus_rotation(nb_qubits=4, 
                                      init_rotation='u3', 
                                      final_rotation='u3')
 
@@ -174,15 +174,16 @@ actual_2 = qc.cost.GHZWitness2Cost(ghz_circ, inst = inst_exact)
 
 
 
-total_budget = 130
+total_budget = 1*len(cost_full._list_meas)
 total_states = 100
 data = []
 char_f = []
 for ii in range(total_states):
     print(ii)
-    x_param = .1*np.random.rand(ghz_circ.nb_params)
-    
-   # est_0 = np.mean(cost_full([x_param]*(total_budget//9)))
+    # x_param = np.random.exponential(0.1, ghz_circ.nb_params)
+    x_param = np.random.normal(0, .5, ghz_circ.nb_params)
+
+    est_0 = np.mean(cost_full([x_param]*(total_budget//len(cost_full._list_meas))))
     est0 = 0
     est_1 = np.mean(cost_w1([x_param]*(total_budget//2)))
     est_2 = np.mean(cost_w2([x_param]*(total_budget//2)))
@@ -211,10 +212,15 @@ plt.ylabel('estimator - mean')
 
 plt.legend()
 
-fig, ax = plt.subplots(1, 3)
+fig, ax = plt.subplots(1, 3, sharey=True)
 ax[0].hist(data[:,0]);ax[0].set_title('fid')
 ax[1].hist(data[:,1]);ax[1].set_title('w1')
 ax[2].hist(data[:,2]);ax[2].set_title('w2')
 ax[0].axis([-0.025, 0.025, 0, 20])
 ax[1].axis([-0.025, 0.025, 0, 20])
 ax[2].axis([-0.025, 0.025, 0, 20])
+
+ax[0].set_ylabel('count')
+ax[0].set_xlabel('deviation')
+ax[1].set_xlabel('deviation')
+ax[2].set_xlabel('deviation')
