@@ -298,6 +298,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
                 raise NotImplementedError("Cannot handle u1,u2 or u3 gates yet")
             ct+=1
         self._x_sol = x_sol
+        c = c.decompose().decompose()
         super().__init__(c)
        
 class RandomAnsatz(BaseAnsatz):
