@@ -958,6 +958,57 @@ def get_ATFIM_qubit_op(
 
     return qubitOp
 
+def get_kitsq_qubit_op(h,Jx,Jy,Jz,v=1.):
+    """ 
+    Construct the qubit Hamiltonian for one loop of the Kitaev Ladder, with
+    a perturbing on-site X field
+
+    0   1
+    o---o
+    |   |
+    o-.-o
+    2   3
+
+    | : Jz
+    --- : Jx
+    -.- : Jy
+
+    Parameters
+    ----------
+    h : float
+        Strength of the on-site X-field
+    Jx, Jy, Jz : floats
+        The coupling parameters of the model (labelled above)
+    v : float, optional
+        Optionally multiply the 1-3 ZZ term by `v` to insert a vortex
+
+    Returns
+    -------
+    qubitOp : qiskit.aqua.operators.WeightedPauliOperator
+        Qiskit representation of the qubit Hamiltonian
+    """
+    pauli_terms = []
+
+    # ZZ terms
+    pauli_terms.append((Jz,Pauli.from_label('ZIZI')))
+    pauli_terms.append((Jz*v,Pauli.from_label('IZIZ')))
+    # XX term
+    pauli_terms.append((Jx,Pauli.from_label('XXII')))
+    # YY term
+    pauli_terms.append((Jy,Pauli.from_label('IIYY')))
+
+    # X terms
+    pauli_terms += [ 
+        (h,Pauli.from_label('XIII')),
+        (h,Pauli.from_label('IXII')),
+        (h,Pauli.from_label('IIXI')),
+        (h,Pauli.from_label('IIIX')),
+    ]
+
+    qubitOp = WeightedPauliOperator(pauli_terms)
+
+    return qubitOp
+
 def get_KH1_qubit_op(Jx,Jy,Jz,v=1.,Jrand=0.,seed=0):
     """ 
     Construct the qubit Hamiltonian for one loop of the Kitaev Ladder:
