@@ -1294,7 +1294,36 @@ class CostWPO(CostInterface):
             qr=circuit_cp.qregs[0]
             )
         self._meas_circuits = self.instance.transpile(measurement_circuits)
+    
+    def __call__(self, params):
+        """
+        Wrapper around cost function so it may be called directly
 
+        Parameters
+        ----------
+        params : array-like
+            Params to bind to the ansatz variables (assumed input is same length
+                                                    as self.ansatz.nb_params).
+
+        Returns
+        -------
+        TYPE
+            2d array (Same as Cost), Single entery for each each input parameter.
+
+        """
+        params = np.atleast_2d(params)
+        res = []
+        for pp in params:
+            circs = self.bind_params_to_meas(pp)
+            results = self.instance.execute(circs)
+            res.append(self.evaluate_cost(results))
+        return np.atleast_2d(res).T
+
+    def shot_noise(self, params, nb_shots = 8):
+        params = np.squeeze(params)
+        params = np.atleast_2d([params for ii in range(nb_shots)])
+        return self.__call__(params)
+    
     def evaluate_cost_and_std(
         self, 
         results:qk.result.result.Result, 
@@ -1394,7 +1423,6 @@ class CostWPOquimb(CostWPO):
         bound_circ = self.ansatz.circuit.bind_parameters(dict(zip(self.ansatz.params,param_pt)))
         # convert to TN
         tn_of_ansatz = ut.qTNfromQASM(bound_circ.qasm())
-
         # first time need to unpack wpo into quimb form
         if not hasattr(self,'measurement_ops'):
             # total hack and reliant on exact form of `.print_details()` string, but works currently
