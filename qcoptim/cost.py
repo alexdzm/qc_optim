@@ -1525,7 +1525,7 @@ class CrossFidelity(CostInterface):
                     +' object was collecting by this class consider using the tag_results_metadata'
                     +' method to add the crossfidelity_metadata.',file=sys.stderr)
             if not comparison_metadata is None:
-                _err_msg = ('Input results dictionary contains data that is incompatible with the '
+                _err_msg = ('Input results dictionary contains data that is incompatible with the'
                         +' this CrossFidelity object.')
                 assert self._seed == comparison_metadata['seed'],_err_msg
                 assert (not self._nb_random > comparison_metadata['nb_random']),_err_msg
@@ -1718,16 +1718,16 @@ class CrossFidelity(CostInterface):
             unitaries_set = range(_nb_random)
 
         # iterate over the different random unitaries
-        tr_rho1_rho2 = 0.
-        tr_rho1squared = 0.
-        tr_rho2squared = 0.
+        self.tr_rhoinput_rhostored = 0.
+        self.input_purity = 0.
+        self.stored_purity = 0.
         nb_qubits = None
         for uidx in unitaries_set:
 
             # try to extract matching experiment data
             try:
-                countsdict_1_fixedU = results.get_counts(name+self._prefix+str(uidx))
-                countsdict_2_fixedU = comparison_results.get_counts(self._prefix+str(uidx))
+                countsdict_input_fixedU = results.get_counts(name+self._prefix+str(uidx))
+                countsdict_stored_fixedU = comparison_results.get_counts(self._prefix+str(uidx))
             except QiskitError:
                 if self._subsample_size is None:
                     print('Cannot extract matching experiment data to calculate cross-fidelity.',
@@ -1742,29 +1742,29 @@ class CrossFidelity(CostInterface):
                     continue
 
             # normalise counts dict to give empirical probability dists
-            P_1_fixedU = { k:v/sum(countsdict_1_fixedU.values()) for k,v in countsdict_1_fixedU.items() }
-            P_2_fixedU = { k:v/sum(countsdict_2_fixedU.values()) for k,v in countsdict_2_fixedU.items() }
+            P_input_fixedU = { k:v/sum(countsdict_input_fixedU.values()) for k,v in countsdict_input_fixedU.items() }
+            P_stored_fixedU = { k:v/sum(countsdict_stored_fixedU.values()) for k,v in countsdict_stored_fixedU.items() }
 
             # use this to check number of qubits has been consistent
             # over all random unitaries
             if nb_qubits is None:
                 # get the first dict key string and find its length
-                nb_qubits = len(list(P_1_fixedU.keys())[0])
-            assert nb_qubits==len(list(P_1_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
-                +', P_1_fixedU.keys()='+f'{P_1_fixedU.keys()}')
-            assert nb_qubits==len(list(P_2_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
-                +', P_2_fixedU.keys()='+f'{P_2_fixedU.keys()}')
+                nb_qubits = len(list(P_input_fixedU.keys())[0])
+            assert nb_qubits==len(list(P_input_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
+                +', P_input_fixedU.keys()='+f'{P_input_fixedU.keys()}')
+            assert nb_qubits==len(list(P_stored_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
+                +', P_stored_fixedU.keys()='+f'{P_stored_fixedU.keys()}')
 
-            tr_rho1_rho2 += self.correlation_fixed_U(P_1_fixedU,P_2_fixedU)
-            tr_rho1squared += self.correlation_fixed_U(P_1_fixedU,P_1_fixedU)
-            tr_rho2squared += self.correlation_fixed_U(P_2_fixedU,P_2_fixedU)
+            self.tr_rhoinput_rhostored += self.correlation_fixed_U(P_input_fixedU,P_stored_fixedU)
+            self.input_purity += self.correlation_fixed_U(P_input_fixedU,P_input_fixedU)
+            self.stored_purity += self.correlation_fixed_U(P_stored_fixedU,P_stored_fixedU)
 
         # add final normalisations
-        tr_rho1_rho2 = (2**nb_qubits)*tr_rho1_rho2/(_nb_random)
-        tr_rho1squared = (2**nb_qubits)*tr_rho1squared/(_nb_random)
-        tr_rho2squared = (2**nb_qubits)*tr_rho2squared/(_nb_random)
+        self.tr_rhoinput_rhostored = (2**nb_qubits)*self.tr_rhoinput_rhostored/(_nb_random)
+        self.input_purity = (2**nb_qubits)*self.input_purity/(_nb_random)
+        self.stored_purity = (2**nb_qubits)*self.stored_purity/(_nb_random)
 
-        return tr_rho1_rho2 / max(tr_rho1squared,tr_rho2squared)
+        return self.tr_rhoinput_rhostored / max(self.input_purity,self.stored_purity)
 
     @staticmethod
     def correlation_fixed_U(P_1,P_2):
