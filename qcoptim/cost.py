@@ -155,6 +155,10 @@ class CostInterface(metaclass=abc.ABCMeta):
         return circs
     
     @property
+    def main_circuit(self):
+        return self.ansatz.circuit
+    
+    @property
     def qk_vars(self):
         """ Returns parameter objects in the circuit"""
         return self.ansatz.params
@@ -284,7 +288,6 @@ class Cost(CostInterface):
         self._list_meas = self._gen_list_meas()  
         self._meas_func = self._gen_meas_func() 
         #--------------------------------------
-        self.main_circuit = ansatz.circuit
         self._untranspiled_main_circuit = copy.deepcopy(ansatz.circuit)
         self._qk_vars = ansatz.params
         self._meas_circuits = ut.gen_meas_circuits(self._untranspiled_main_circuit, 
