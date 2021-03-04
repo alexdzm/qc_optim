@@ -155,6 +155,10 @@ class CostInterface(metaclass=abc.ABCMeta):
         return circs
     
     @property
+    def main_circuit(self):
+        return self.ansatz.circuit
+    
+    @property
     def qk_vars(self):
         """ Returns parameter objects in the circuit"""
         return self.ansatz.params
@@ -284,7 +288,6 @@ class Cost(CostInterface):
         self._list_meas = self._gen_list_meas()  
         self._meas_func = self._gen_meas_func() 
         #--------------------------------------
-        self.main_circuit = ansatz.circuit
         self._untranspiled_main_circuit = copy.deepcopy(ansatz.circuit)
         self._qk_vars = ansatz.params
         self._meas_circuits = ut.gen_meas_circuits(self._untranspiled_main_circuit, 
@@ -828,6 +831,7 @@ class RandomXYCost(Cost):
         assert self.nb_qubits == hamiltonian.shape[0], "Input hamiltonian must have same dims as nb_qubits (see docstring)"
         assert hamiltonian.shape[0] == hamiltonian.shape[1], "Input Hamiltonian should be square (see docstring)"
         self.hamiltonian = hamiltonian
+        
     def _gen_list_meas(self):
         nb_qubits = self.nb_qubits
         x = 'x'*nb_qubits
@@ -894,6 +898,29 @@ class RandomXYCostWithZ(Cost):
                         xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[1], ii, jj)
                         xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[2], ii, jj)
             return field_term + xy_term
+        return func
+
+
+class SinglePauliString(Cost):
+    """
+    Input (or randomly generate) a single pauli string to measure
+    """
+    def __init__(self, ansatz,
+                 pauli_string = None,
+                 **args):
+        self.pauli_string = pauli_string
+        super().__init__(ansatz=ansatz, **args)
+    
+    def _gen_list_meas(self):
+        if self.pauli_string == None:
+            self.pauli_string = ''.join(np.random.choice(['X', 'Y', 'Z', '1'], self.ansatz.nb_qubits))
+        assert len(self.pauli_string) == self.ansatz.nb_qubits, 'Input pauli sring should be same size as ansatz'
+        self.pauli_string = self.pauli_string.replace('I', '1').replace('i', '1')
+        return [self.pauli_string.lower()]
+
+    def _gen_meas_func(self):
+        def func(count_list):
+            return expected_parity(count_list[0])
         return func
 
 
