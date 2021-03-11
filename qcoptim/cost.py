@@ -1772,89 +1772,132 @@ class CrossFidelity(CostInterface):
             _nb_random = self._nb_random
             unitaries_set = range(_nb_random)
 
-        # iterate over the different random unitaries
-        self.tr_rhoinput_rhostored = 0.
-        self.input_purity = 0.
-        self.stored_purity = 0.
-        nb_qubits = None
-        for uidx in unitaries_set:
-
-            # try to extract matching experiment data
-            try:
-                countsdict_input_fixedU = results.get_counts(name+self._prefix+str(uidx))
-                countsdict_stored_fixedU = comparison_results.get_counts(self._prefix+str(uidx))
-            except QiskitError:
-                if self._subsample_size is None:
-                    print('Cannot extract matching experiment data to calculate cross-fidelity.',
-                        file=sys.stderr)
-                    raise
-                else:
-                    _nb_random -= 1
-                    if _nb_random<self._subsample_size:
-                        print('Cannot extract matching experiment data to calculate cross-fidelity.',
-                            file=sys.stderr)
-                        raise
-                    continue
-
-            # normalise counts dict to give empirical probability dists
-            P_input_fixedU = { k:v/sum(countsdict_input_fixedU.values()) for k,v in countsdict_input_fixedU.items() }
-            P_stored_fixedU = { k:v/sum(countsdict_stored_fixedU.values()) for k,v in countsdict_stored_fixedU.items() }
-
-            # use this to check number of qubits has been consistent
-            # over all random unitaries
-            if nb_qubits is None:
-                # get the first dict key string and find its length
-                nb_qubits = len(list(P_input_fixedU.keys())[0])
-            assert nb_qubits==len(list(P_input_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
-                +', P_input_fixedU.keys()='+f'{P_input_fixedU.keys()}')
-            assert nb_qubits==len(list(P_stored_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
-                +', P_stored_fixedU.keys()='+f'{P_stored_fixedU.keys()}')
-
-            self.tr_rhoinput_rhostored += self.correlation_fixed_U(P_input_fixedU,P_stored_fixedU)
-            self.input_purity += self.correlation_fixed_U(P_input_fixedU,P_input_fixedU)
-            self.stored_purity += self.correlation_fixed_U(P_stored_fixedU,P_stored_fixedU)
-
-        # add final normalisations
-        self.tr_rhoinput_rhostored = (2**nb_qubits)*self.tr_rhoinput_rhostored/(_nb_random)
-        self.input_purity = (2**nb_qubits)*self.input_purity/(_nb_random)
-        self.stored_purity = (2**nb_qubits)*self.stored_purity/(_nb_random)
+        self.tr_rhoinput_rhostored,self.input_purity,self.stored_purity = crossfidelity_from_results(results,comparison_results,
+                                                                                                     unitaries_set=unitaries_set,
+                                                                                                     prefixA=name+self._prefix,
+                                                                                                     prefixB=self._prefix,)
 
         return self.tr_rhoinput_rhostored / max(self.input_purity,self.stored_purity)
 
-    @staticmethod
-    def correlation_fixed_U(P_1,P_2):
-        """
-        Carries out the inner loop calculation of the Cross-Fidelity. In
-        contrast to the paper, arxiv:1909.01282, it makes sense for us to
-        make the sum over sA and sA' the inner loop. So this computes the
-        sum over sA and sA' for fixed random U.
+def crossfidelity_from_results(
+    resultsA,
+    resultsB,
+    nb_random=None,
+    unitaries_set=None,
+    prefixA='HaarRandom',
+    prefixB='HaarRandom',
+    ):
+    """
+    Function to calculate the offline CrossFidelity between two quantum 
+    states (arxiv:1909.01282).
+    
+    Parameters
+    ----------
+    resultsA,resultsB : Qiskit results type
+        Results to calculate cross-fidelity between
+    nb_random : (optional*) int
+    unitaries_set : (optional*) list of ints
+        One of these two args must be supplied, with nb_random taking 
+        precedence. Used to locate relevant measurement results in the
+        qiksit result objs.
+    prefixA : (optional) str
+    prefixB : (optional) str
+        Prefixes for locating relevant results in qiskit result objs.
 
-        Parameters
-        ----------
-        P_1 : dict (normalised counts dictionary)
-            The empirical distribution for the measurments on qubit 1
-            P^{(1)}_U(s_A) = Tr[ U_A \rho_1 U^\dagger_A |s_A\rangle \langle s_A| ]
-            where U is a fixed, randomly chosen unitary, and s_A is all
-            possible binary strings in the computational basis
-        P_2 : dict (normalised counts dictionary)
-            Same for qubit 2.
+    Returns
+    -------
+    tr_rhoA_rhoB : float
+    tr_rhoA_2 : float
+    tr_rhoB_2 : float
+        
+    """
 
-        Return
-        ------
-        correlation_fixed_U : float
-            Evaluation of the inner sum of the cross-fidelity
-        """
-        # iterate over the elements of the computational basis (that
-        # appear in the measurement results)sublimes
-        correlation_fixed_U = 0
-        for sA,P_1_sA in P_1.items():
-            for sAprime,P_2_sAprime in P_2.items():
+    # iterate over the different random unitaries
+    tr_rhoA_rhoB = 0.
+    tr_rhoA_2 = 0.
+    tr_rhoB_2 = 0.
+    nb_qubits = None
 
-                # add up contribution
-                hamming_distance = int(len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime)))
-                correlation_fixed_U += (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
+    # parse nb_random/unitaries_set args
+    if (nb_random is None) and (unitaries_set is None):
+        print('Please specify either the number of random unitaries (`nb_random`), or'
+            +' the specific indexes of the random unitaries to include (`unitaries_set`).',
+            file=sys.stderr)
+        raise ValueError
+    elif not (nb_random is None):
+        unitaries_set = range(nb_random)
+    else:
+        nb_random = len(unitaries_set)
 
-        return correlation_fixed_U
+    for uidx in unitaries_set:
+
+        # try to extract matching experiment data
+        try:
+            countsdict_rhoA_fixedU = resultsA.get_counts(prefixA+str(uidx))
+            countsdict_rhoB_fixedU = resultsB.get_counts(prefixB+str(uidx))
+        except QiskitError:
+            print('Cannot extract matching experiment data to calculate cross-fidelity.',
+                file=sys.stderr)
+            raise
+
+        # normalise counts dict to give empirical probability dists
+        P_rhoA_fixedU = { k:v/sum(countsdict_rhoA_fixedU.values()) for k,v in countsdict_rhoA_fixedU.items() }
+        P_rhoB_fixedU = { k:v/sum(countsdict_rhoB_fixedU.values()) for k,v in countsdict_rhoB_fixedU.items() }
+
+        # use this to check number of qubits has been consistent
+        # over all random unitaries
+        if nb_qubits is None:
+            # get the first dict key string and find its length
+            nb_qubits = len(list(P_rhoA_fixedU.keys())[0])
+        assert nb_qubits==len(list(P_rhoA_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
+            +', P_rhoA_fixedU.keys()='+f'{P_rhoA_fixedU.keys()}')
+        assert nb_qubits==len(list(P_rhoB_fixedU.keys())[0]),('nb_qubits='+f'{nb_qubits}'
+            +', P_rhoB_fixedU.keys()='+f'{P_rhoB_fixedU.keys()}')
+
+        tr_rhoA_rhoB += correlation_fixed_U(P_rhoA_fixedU,P_rhoB_fixedU)
+        tr_rhoA_2 += correlation_fixed_U(P_rhoA_fixedU,P_rhoA_fixedU)
+        tr_rhoB_2 += correlation_fixed_U(P_rhoB_fixedU,P_rhoB_fixedU)
+
+    # add final normalisations
+    tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB/(nb_random)
+    tr_rhoA_2 = (2**nb_qubits)*tr_rhoA_2/(nb_random)
+    tr_rhoB_2 = (2**nb_qubits)*tr_rhoB_2/(nb_random)
+
+    return tr_rhoA_rhoB,tr_rhoA_2,tr_rhoB_2
+
+def correlation_fixed_U(P_1,P_2):
+    """
+    Carries out the inner loop calculation of the Cross-Fidelity. In
+    contrast to the paper, arxiv:1909.01282, it makes sense for us to
+    make the sum over sA and sA' the inner loop. So this computes the
+    sum over sA and sA' for fixed random U.
+
+    Parameters
+    ----------
+    P_1 : dict (normalised counts dictionary)
+        The empirical distribution for the measurments on qubit 1
+        P^{(1)}_U(s_A) = Tr[ U_A \rho_1 U^\dagger_A |s_A\rangle \langle s_A| ]
+        where U is a fixed, randomly chosen unitary, and s_A is all
+        possible binary strings in the computational basis
+    P_2 : dict (normalised counts dictionary)
+        Same for qubit 2.
+
+    Return
+    ------
+    correlation_fixed_U : float
+        Evaluation of the inner sum of the cross-fidelity
+    """
+    # iterate over the elements of the computational basis (that
+    # appear in the measurement results)sublimes
+    correlation_fixed_U = 0
+    for sA,P_1_sA in P_1.items():
+        for sAprime,P_2_sAprime in P_2.items():
+
+            # add up contribution
+            hamming_distance = int(len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime)))
+            correlation_fixed_U += (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
+
+    return correlation_fixed_U
 
 #%%
 # -------------------------------------------------------------- #
