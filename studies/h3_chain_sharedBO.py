@@ -7,6 +7,7 @@ Created on Wed Nov 18 16:02:02 2020
 """
 
 import os
+import sys
 import time
 import copy
 import joblib
@@ -23,7 +24,13 @@ pi = np.pi
 # ------------------------------------------------------
 # General Qiskit related helper functions
 # ------------------------------------------------------
-shape = (10, 10)
+
+try:
+    max_iter = sys.argv[1]
+    max_iter = int(max_iter)
+except:
+    max_iter = 2
+shape = (2, 2)
 positions = np.linspace(0.2, 2, shape[0])
 
 
@@ -104,15 +111,15 @@ def find_iter_vals():
 #%%
 
 save_dict = {'positions':positions}
-nb_monte_carlo = 1
-iter_vec = [2]
+nb_monte_carlo = 2
+iter_vec = [max_iter + 4]
 for itter in iter_vec:
     print(itter)
     this_data = [run_bo(1,itter) for ii in range(nb_monte_carlo)]
     save_dict.update({str(itter):this_data})
 
-#fname = 'iters_are_'+str(iter_vec[0])+'-'+str(iter_vec[-1]) + '.dmp'
-#jbl.dump(save_dict, fname)
+fname = 'iter_'+str(iter_vec[0])+ '_carlo_' +str(nb_monte_carlo) +'.dmp'
+jbl.dump(save_dict, fname)
     
     
     
