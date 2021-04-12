@@ -1,19 +1,98 @@
 """
-Tests for error mitigation classes and functions
+Tests for error mitigation classes and functions, run with pytest.
 """
 
 import pytest
 
-import numpy as np
-
 from qiskit import Aer, QuantumCircuit
 from qiskit.aqua import QuantumInstance
 from qiskit.aqua.operators import WeightedPauliOperator
-from qiskit.quantum_info.operators import Operator, Pauli
+from qiskit.quantum_info.operators import Pauli
 
 from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
 from qcoptim.cost import CostWPO
-from qcoptim.error_mitigation import PurityBoostCalibrator, PurityBoostFitter
+from qcoptim.error_mitigation import (
+    multiply_cx,
+    CXMultiplierFitter,
+    PurityBoostCalibrator,
+    PurityBoostFitter,
+)
+
+
+def test_multiply_cx():
+    """ """
+    qc1 = QuantumCircuit(3)
+    qc3 = qc1.copy()
+    qc5 = qc1.copy()
+
+    qc1.h(0)
+    qc1.cx(0, 1)
+    qc1.cx(1, 2)
+
+    qc3.h(0)
+    for _ in range(3):
+        qc3.cx(0, 1)
+    for _ in range(3):
+        qc3.cx(1, 2)
+
+    qc5.h(0)
+    for _ in range(5):
+        qc5.cx(0, 1)
+    for _ in range(5):
+        qc5.cx(1, 2)
+
+    assert multiply_cx(qc1, 1) == qc1
+    assert multiply_cx(qc1, 3) == qc3
+    assert multiply_cx(qc1, 5) == qc5
+
+
+@pytest.mark.parametrize("extrapolation_strategy", ['richardson', 'linear'])
+def test_cx_multiplier_fitter(extrapolation_strategy):
+    """ """
+    max_factor = 7
+
+    wpo = WeightedPauliOperator([
+        (1., Pauli.from_label('ZZ')),
+        (-1./3, Pauli.from_label('XI')),
+        (-1./3, Pauli.from_label('IX')),
+    ])
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'), shots=8192)
+
+    # test in Z-basis
+    target_value = 1.
+    test_circ = QuantumCircuit(2)
+    test_circ.cx(0, 1)
+    cost = CostWPO(TrivialAnsatz(test_circ), instance, wpo)
+    fitter = CXMultiplierFitter(
+        cost, max_factor,
+        extrapolation_strategy=extrapolation_strategy,
+    )
+    circs = fitter.bind_params_to_meas([])
+    assert len(circs) == 2 * ((max_factor + 1) // 2)
+    results = instance.execute(circs)
+    mean = fitter.evaluate_cost(results)
+    _, err = fitter.evaluate_cost_and_std(results)
+    assert mean - 3*err < target_value
+    assert mean + 3*err > target_value
+
+    # test in X-basis
+    target_value = -2./3
+    test_circ = QuantumCircuit(2)
+    test_circ.cx(0, 1)
+    test_circ.h(0)
+    test_circ.h(1)
+    cost = CostWPO(TrivialAnsatz(test_circ), instance, wpo)
+    fitter = CXMultiplierFitter(
+        cost, max_factor,
+        extrapolation_strategy=extrapolation_strategy,
+    )
+    circs = fitter.bind_params_to_meas([])
+    assert len(circs) == 2 * ((max_factor + 1) // 2)
+    results = instance.execute(circs)
+    mean = fitter.evaluate_cost(results)
+    _, err = fitter.evaluate_cost_and_std(results)
+    assert mean - 3*err < target_value
+    assert mean + 3*err > target_value
 
 
 def test_purity_cost_calibrator():
@@ -40,8 +119,9 @@ def test_purity_cost_calibrator():
     assert calibrator.calibrated
 
     # check stored data, ideally ptot should be 0
-    assert len(calibrator.ptot_dist) == num_bootstraps
-    assert calibrator.ptot < 0.05
+    target_value = 0
+    assert calibrator.ptot - 3*calibrator.ptot_std < target_value
+    assert calibrator.ptot + 3*calibrator.ptot_std > target_value
 
     # check reset
     calibrator.reset()
@@ -69,8 +149,10 @@ def test_purity_boost_fitter():
     circs = fitter.bind_params_to_meas([])
     assert len(circs) == num_random + 2
     results = instance.execute(circs)
-    mean, err = fitter.evaluate_cost_and_std(results)
-    assert (mean - 2*err < target_value) and (mean + 2*err > target_value)
+    mean = fitter.evaluate_cost(results)
+    _, err = fitter.evaluate_cost_and_std(results)
+    assert mean - 3*err < target_value
+    assert mean + 3*err > target_value
 
     # test in X-basis
     target_value = -2./3
@@ -83,8 +165,10 @@ def test_purity_boost_fitter():
     circs = fitter.bind_params_to_meas([])
     assert len(circs) == num_random + 2
     results = instance.execute(circs)
-    mean, err = fitter.evaluate_cost_and_std(results)
-    assert (mean - 2*err < target_value) and (mean + 2*err > target_value)
+    mean = fitter.evaluate_cost(results)
+    _, err = fitter.evaluate_cost_and_std(results)
+    assert mean - 3*err < target_value
+    assert mean + 3*err > target_value
 
 
 def test_purity_boost_fitter_shared_calibration():
@@ -129,9 +213,10 @@ def test_purity_boost_fitter_shared_calibration():
         and fitter_2.calibrator.calibrated
     )
     # has problems with target values near zero
-    # assert (mean - 2*err < target_value) and (mean + 2*err > target_value)
+    # assert (mean - 3*err < target_value) and (mean + 3*err > target_value)
 
     target_value = 1
     mean = fitter_1.evaluate_cost(results)
     _, err = fitter_1.evaluate_cost_and_std(results)
-    assert (mean - 2*err < target_value) and (mean + 2*err > target_value)
+    assert mean - 3*err < target_value
+    assert mean + 3*err > target_value

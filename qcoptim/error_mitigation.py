@@ -5,6 +5,7 @@ Quantum error mitigation functions and classes.
 import abc
 
 import numpy as np
+from scipy.optimize import curve_fit
 
 from qiskit import QiskitError
 from qiskit.circuit.library import CXGate
@@ -17,8 +18,8 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
                        return_dist=False):
     """
     Calculate the boostrap mean and standard-error of `stat_func` applied to
-    `empirical_distribution` dataset. Optionally return the distribution of the
-    resampled values of the estimator, instead of the standard error.
+    `empirical_distribution` dataset. Optionally return the list of resampled
+    values of the estimator, instead of the standard error.
 
     Parameters
     ----------
@@ -29,14 +30,15 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
     num_bootstraps : int
         Number of bootstrap resamples to perform
     return_dist : boolean, default False
-        If True, return the bootstrapped distribution of the estimator instead
+        If True, return the list of resampled values of the estimator instead
         of the standard error (see Returns)
 
     Returns
     -------
     mean_estimate : float
-    standard_error OR estimator_dist : float OR list[float]
-        If `return_dist=True` returns distribution, else returns standard error
+    standard_error OR resampled_values : float OR list[float]
+        If `return_dist=True` returns list of resampled values, else returns
+        standard error
     """
     num_data = empirical_distribution.size
 
@@ -63,7 +65,7 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
                 empirical_distribution[resample_indexes])
 
     if return_dist:
-        # bootstrap estimate and distribution
+        # bootstrap estimate and list of resampled values
         return (
             np.mean(resampled_estimator),
             resampled_estimator
@@ -71,8 +73,8 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
     # bootstrap estimate and standard deviation
     return (
         np.mean(resampled_estimator),
-        (np.mean(resampled_estimator**2)
-            - np.mean(resampled_estimator)**2)
+        np.sqrt(np.mean(resampled_estimator**2)
+                - np.mean(resampled_estimator)**2)
     )
 
 
@@ -157,7 +159,7 @@ def multiply_cx(circuit, multiplier):
         Copy of input circuit, with CNOTs multiplied by multiplier
     """
     if multiplier == 1:
-        return circuit
+        return circuit.copy()
     if (not multiplier % 2 == 1) and (not isinstance(multiplier, int)):
         raise ValueError('multiplier must be an odd integer, recieved: '
                          + f'{multiplier}')
@@ -178,35 +180,52 @@ def multiply_cx(circuit, multiplier):
     return multiplied_circuit
 
 
-def richardson_extrapolation(cost_series, cost_series_vars=None, alphas=None):
+def richardson_extrapolation(stretch_factors, cost_series,
+                             cost_series_vars=None):
     """
     see p22 of arXiv:2011.01382
     """
-
-    # assume CX multiplication
-    if alphas is None:
-        alphas = list(range(1, len(cost_series), 2))
-
-    betas = []
-    for idx1, alpha1 in enumerate(alphas):
-        betas[idx1] = 1.
-        for idx2, alpha2 in enumerate(alphas):
+    betas = -1*np.ones(len(cost_series))
+    for idx1, alpha1 in enumerate(stretch_factors):
+        for idx2, alpha2 in enumerate(stretch_factors):
             if not idx1 == idx2:
                 betas[idx1] *= (alpha2 / (alpha1 - alpha2))
 
-    variances = None
+    # runtime test of normalisation conditions on betas
+    test_array = [
+        sum([b*a**idx for (a, b) in zip(stretch_factors, betas)])
+        for idx, _ in enumerate(stretch_factors)
+    ]
+    assert np.isclose(test_array[0], 1.)
+    assert np.all(np.isclose(test_array[1:], np.zeros(len(test_array)-1)))
+
+    # get std_err if possible
+    std_err = None
     if cost_series_vars is not None:
-        variances = sum(
+        std_err = np.sqrt(sum(
             [(beta**2) * var for beta, var in zip(betas, cost_series_vars)]
-        )
+        ))
 
     return (
         sum([beta*cost for beta, cost in zip(betas, cost_series)]),
-        variances
+        std_err
     )
 
 
-class ZNECXMultiplierFitter(FitterInterface):
+def linear_extrapolation(stretch_factors, cost_series,
+                         cost_series_vars=None):
+    """
+    """
+    def _linear_fit(x, a, b):
+        return a + b*x
+
+    popt, pcov = curve_fit(_linear_fit, stretch_factors, cost_series,
+                           sigma=np.sqrt(cost_series_vars))
+
+    return popt[0], np.sqrt(pcov[0, 0])
+
+
+class CXMultiplierFitter(FitterInterface):
     """
     """
 
@@ -220,7 +239,31 @@ class ZNECXMultiplierFitter(FitterInterface):
         """
         self.cost = cost_obj
         self.max_factor = max_factor
+        self.stretch_factors = list(range(1, self.max_factor+1, 2))
         self.extrapolation_strategy = extrapolation_strategy
+
+        if extrapolation_strategy == 'richardson':
+            def _richardson_extrapolation(cost_series, cost_series_vars):
+                return richardson_extrapolation(
+                    stretch_factors=self.stretch_factors,
+                    cost_series=cost_series,
+                    cost_series_vars=cost_series_vars,
+                )
+            self.extrapolator = _richardson_extrapolation
+        elif extrapolation_strategy == 'linear':
+            def _linear_extrapolation(cost_series, cost_series_vars):
+                return linear_extrapolation(
+                    stretch_factors=self.stretch_factors,
+                    cost_series=cost_series,
+                    cost_series_vars=cost_series_vars,
+                )
+            self.extrapolator = _linear_extrapolation
+        else:
+            raise ValueError(extrapolation_strategy)
+
+        # for saving last evaluation (could replace with callback arg)
+        self.last_cost_vars = None
+        self.last_cost_series = None
 
     def bind_params_to_meas(self, params=None, params_names=None):
         """ """
@@ -230,7 +273,7 @@ class ZNECXMultiplierFitter(FitterInterface):
         )
 
         zne_circs = []
-        for factor in range(1, self.max_factor, 2):
+        for factor in self.stretch_factors:
             for circ in bound_circs:
                 tmp = multiply_cx(circ, factor)
                 tmp.name = 'zne' + f'{factor}' + tmp.name
@@ -245,19 +288,29 @@ class ZNECXMultiplierFitter(FitterInterface):
         **kwargs,
     ):
         """ """
-        cost_series = [
-            self.cost.evaluate_cost(results, name=name+'zne'+f'{idx}',
-                                    **kwargs)
-            for idx in range(1, self.max_factor, 2)
-        ]
+        # see if cost obj has evaluate_cost_and_std method
+        std_func = getattr(self.cost, "evaluate_cost_and_std", None)
+        if callable(std_func):
+            cost_series = []
+            cost_vars = []
+            for factor in self.stretch_factors:
+                mean, std = std_func(results, name=name+'zne'+f'{factor}',
+                                     **kwargs)
+                cost_series.append(mean)
+                cost_vars.append(std**2)
+        else:
+            cost_vars = None
+            cost_series = [
+                self.cost.evaluate_cost(results, name=name+'zne'+f'{idx}',
+                                        **kwargs)
+                for idx in self.stretch_factors
+            ]
 
-        raw_cost = self.cost.evaluate_cost(results, name=name, **kwargs)
+        # save last evaluation (could replace with callback arg)
+        self.last_cost_vars = cost_vars
+        self.last_cost_series = cost_series
 
-        if not self.calibrator.calibrated:
-            self.calibrator.process_calibration_results(results, name=name)
-
-        mitigated_resamples = raw_cost / (1 - self.calibrator.ptot_dist)
-        return np.mean(mitigated_resamples), np.std(mitigated_resamples)
+        return self.extrapolator(cost_series, cost_vars)
 
     def evaluate_cost(
         self,
@@ -468,7 +521,7 @@ class PurityBoostCalibrator(BaseCalibrator):
 
         # have not yet estimated ptot
         self.ptot = None
-        self.ptot_dist = None
+        self.ptot_std = None
 
         # function used to name circuits
         self._circ_name = lambda idx: 'ptot-cal-' + f'{idx}'
@@ -518,11 +571,10 @@ class PurityBoostCalibrator(BaseCalibrator):
             return 1 - np.sqrt((2**n_qubits*purity - 1)/(2**n_qubits - 1))
 
         # bootstrap estimate of ptot and its distribution over the resamples
-        self.ptot, self.ptot_dist = bootstrap_resample(
+        self.ptot, self.ptot_std = bootstrap_resample(
             compute_ptot,
             contributions_fixed_u,
             self.num_bootstraps,
-            return_dist=True,
         )
 
         self.calibrated = True
@@ -601,13 +653,26 @@ class PurityBoostFitter(FitterInterface):
         **kwargs,
     ):
         """ """
-        raw_cost = self.cost.evaluate_cost(results, name=name, **kwargs)
+        std_func = getattr(self.cost, "evaluate_cost_and_std", None)
+        if callable(std_func):
+            raw_cost, raw_std = std_func(results, name=name, **kwargs)
+        else:
+            raw_std = None
+            raw_cost = self.cost.evaluate_cost(results, name=name, **kwargs)
 
         if not self.calibrator.calibrated:
             self.calibrator.process_calibration_results(results, name=name)
 
-        mitigated_resamples = raw_cost / (1 - self.calibrator.ptot_dist)
-        return np.mean(mitigated_resamples), np.std(mitigated_resamples)
+        mean = raw_cost / (1 - self.calibrator.ptot)
+        var = (
+            (mean**2) * (self.calibrator.ptot_std**2
+                         / (1 - self.calibrator.ptot)**2)
+        )
+        if raw_std is not None:
+            # propagate error from uncertainty of cost estimate if available
+            var += (mean**2) * (raw_std**2 / raw_cost**2)
+
+        return mean, np.sqrt(var)
 
     def evaluate_cost(
         self,
