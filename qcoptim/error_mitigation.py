@@ -2,7 +2,7 @@
 Quantum error mitigation functions and classes.
 """
 
-import abc
+# import abc
 
 import numpy as np
 from scipy.optimize import curve_fit
@@ -124,15 +124,21 @@ class BaseCalibrator():
         raise NotImplementedError
 
 
-class FitterInterface(CostInterface, metaclass=abc.ABCMeta):
+class BaseFitter(CostInterface):
     """
-    Interface for error mitigation fitters. Extends the CostInterface so that
+    Base class for error mitigation fitters. Extends the CostInterface so that
     (if we feel comfortable black-boxing an error mitigation approach) Fitter
     objs could behave as Cost objs -- yielding all the necessary circuits to
     compute an error mitigated estimate of a cost and returning its value after
     execution on a backend.
     """
+    def __init__(self, cost_obj):
+        """
+        """
+        self.cost = cost_obj
 
+        # for saving last evaluation
+        self.last_evaluation = None
 
 #
 # Zero-noise extrapolation
@@ -225,7 +231,7 @@ def linear_extrapolation(stretch_factors, cost_series,
     return popt[0], np.sqrt(pcov[0, 0])
 
 
-class CXMultiplierFitter(FitterInterface):
+class CXMultiplierFitter(BaseFitter):
     """
     """
 
@@ -237,7 +243,8 @@ class CXMultiplierFitter(FitterInterface):
     ):
         """
         """
-        self.cost = cost_obj
+        BaseFitter.__init__(self, cost_obj)
+
         self.max_factor = max_factor
         self.stretch_factors = list(range(1, self.max_factor+1, 2))
         self.extrapolation_strategy = extrapolation_strategy
@@ -260,10 +267,6 @@ class CXMultiplierFitter(FitterInterface):
             self.extrapolator = _linear_extrapolation
         else:
             raise ValueError(extrapolation_strategy)
-
-        # for saving last evaluation (could replace with callback arg)
-        self.last_cost_vars = None
-        self.last_cost_series = None
 
     def bind_params_to_meas(self, params=None, params_names=None):
         """ """
@@ -291,26 +294,34 @@ class CXMultiplierFitter(FitterInterface):
         # see if cost obj has evaluate_cost_and_std method
         std_func = getattr(self.cost, "evaluate_cost_and_std", None)
         if callable(std_func):
-            cost_series = []
-            cost_vars = []
+            raw_cost_series = []
+            raw_cost_vars = []
             for factor in self.stretch_factors:
                 mean, std = std_func(results, name=name+'zne'+f'{factor}',
                                      **kwargs)
-                cost_series.append(mean)
-                cost_vars.append(std**2)
+                raw_cost_series.append(mean)
+                raw_cost_vars.append(std**2)
         else:
-            cost_vars = None
-            cost_series = [
+            raw_cost_vars = None
+            raw_cost_series = [
                 self.cost.evaluate_cost(results, name=name+'zne'+f'{idx}',
                                         **kwargs)
                 for idx in self.stretch_factors
             ]
 
-        # save last evaluation (could replace with callback arg)
-        self.last_cost_vars = cost_vars
-        self.last_cost_series = cost_series
+        # extrapolate to zero
+        mean, std = self.extrapolator(raw_cost_series, raw_cost_vars)
 
-        return self.extrapolator(cost_series, cost_vars)
+        # save last evaluation (could replace with callback arg)
+        self.last_evaluation = {
+            'stretch_factors': self.stretch_factors,
+            'raw_cost_series': raw_cost_series,
+            'raw_cost_vars': raw_cost_vars,
+            'zne_mean': mean,
+            'zne_std': std,
+        }
+
+        return mean, std
 
     def evaluate_cost(
         self,
@@ -600,7 +611,7 @@ class PurityBoostCalibrator(BaseCalibrator):
             self._ptot = None
 
 
-class PurityBoostFitter(FitterInterface):
+class PurityBoostFitter(BaseFitter):
     """
     arXiv:2101.01690
 
@@ -619,7 +630,7 @@ class PurityBoostFitter(FitterInterface):
     ):
         """
         """
-        self.cost = cost_obj
+        BaseFitter.__init__(self, cost_obj)
 
         if calibrator is None:
             # make calibrator if none passed
@@ -671,6 +682,14 @@ class PurityBoostFitter(FitterInterface):
         if raw_std is not None:
             # propagate error from uncertainty of cost estimate if available
             var += (mean**2) * (raw_std**2 / raw_cost**2)
+
+        # store details of last evaluation
+        self.last_evaluation = {
+            'raw_cost': raw_cost,
+            'raw_std': raw_std,
+            'pboost_mean': mean,
+            'pboost_std': np.sqrt(var),
+        }
 
         return mean, np.sqrt(var)
 
