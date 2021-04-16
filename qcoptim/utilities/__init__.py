@@ -2,6 +2,8 @@
 """
 
 from .core import (
+    NoneType,
+    pi,
     BackendManager,
     Batch,
     SafeString,
