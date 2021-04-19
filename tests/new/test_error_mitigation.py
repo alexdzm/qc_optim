@@ -4,12 +4,15 @@ Tests for error mitigation classes and functions, run with pytest.
 
 import pytest
 
+import numpy as np
+
 from qiskit import Aer, QuantumCircuit
 from qiskit.aqua import QuantumInstance
 from qiskit.aqua.operators import WeightedPauliOperator
 from qiskit.quantum_info.operators import Pauli
 
 from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
+from qcoptim.utilities import RandomMeasurementHandler
 from qcoptim.cost import CostWPO
 from qcoptim.error_mitigation import (
     multiply_cx,
@@ -72,8 +75,8 @@ def test_cx_multiplier_fitter(extrapolation_strategy):
     results = instance.execute(circs)
     mean = fitter.evaluate_cost(results)
     _, err = fitter.evaluate_cost_and_std(results)
-    assert mean - 3*err < target_value
-    assert mean + 3*err > target_value
+    assert mean - 4*err < target_value
+    assert mean + 4*err > target_value
 
     # test in X-basis
     target_value = -2./3
@@ -91,8 +94,8 @@ def test_cx_multiplier_fitter(extrapolation_strategy):
     results = instance.execute(circs)
     mean = fitter.evaluate_cost(results)
     _, err = fitter.evaluate_cost_and_std(results)
-    assert mean - 3*err < target_value
-    assert mean + 3*err > target_value
+    assert mean - 4*err < target_value
+    assert mean + 4*err > target_value
 
 
 def test_purity_cost_calibrator():
@@ -106,26 +109,75 @@ def test_purity_cost_calibrator():
                                        num_bootstraps=num_bootstraps)
 
     # check blocking yield of calibration circuits
-    assert not calibrator._yielded_calibration_circuits
     circs = calibrator.calibration_circuits
     assert len(circs) == num_random
-    assert calibrator._yielded_calibration_circuits
     assert calibrator.calibration_circuits == []
 
     # run calibration
     results = instance.execute(circs)
     calibrator.process_calibration_results(results)
-    assert not calibrator._yielded_calibration_circuits
     assert calibrator.calibrated
 
     # check stored data, ideally ptot should be 0
     target_value = 0
-    assert calibrator.ptot - 3*calibrator.ptot_std < target_value
-    assert calibrator.ptot + 3*calibrator.ptot_std > target_value
+    assert calibrator.ptot - 4*calibrator.ptot_std < target_value
+    assert calibrator.ptot + 4*calibrator.ptot_std > target_value
 
     # check reset
     calibrator.reset()
-    assert not calibrator._yielded_calibration_circuits
+    assert len(calibrator.calibration_circuits) == num_random
+    assert calibrator.calibration_circuits == []
+
+    # changing calibration point will also cause reset
+    calibrator.calibration_point = np.ones(ansatz.nb_params)
+    assert len(calibrator.calibration_circuits) == num_random
+    assert calibrator.calibration_circuits == []
+
+
+def test_purity_cost_calibrator_shared_rand_meas_handler():
+    """ """
+    num_random = 500
+    seed = 0
+
+    def circ_name(idx):
+        return 'test_circ'+f'{idx}'
+
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    ansatz = RandomAnsatz(2, 2)
+    rand_meas_handler = RandomMeasurementHandler(
+        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+    )
+
+    calibration_point = np.ones(ansatz.nb_params)
+    calibrator1 = PurityBoostCalibrator(
+        ansatz, instance, rand_meas_handler=rand_meas_handler,
+        calibration_point=calibration_point,
+    )
+    calibrator2 = PurityBoostCalibrator(
+        ansatz, instance, rand_meas_handler=rand_meas_handler,
+        calibration_point=calibration_point,
+    )
+
+    # check blocking behaviour of calibrators with shared rand_meas_handler
+    circs = calibrator1.calibration_circuits
+    assert len(circs) == num_random
+    assert calibrator2.calibration_circuits == []
+
+    # run both calibrations
+    results = instance.execute(circs)
+    calibrator1.process_calibration_results(results)
+    assert calibrator1.calibrated
+    calibrator2.process_calibration_results(results)
+    assert calibrator2.calibrated
+
+    # check stored data, ideally ptot should be 0
+    target_value = 0
+    for calib in [calibrator1, calibrator2]:
+        assert calib.ptot - 4*calib.ptot_std < target_value
+        assert calib.ptot + 4*calib.ptot_std > target_value
+
+    # should have slightly different values, from bootstrapping
+    assert not np.isclose(calibrator1.ptot_std, calibrator2.ptot_std)
 
 
 def test_purity_boost_fitter():
@@ -151,8 +203,8 @@ def test_purity_boost_fitter():
     results = instance.execute(circs)
     mean = fitter.evaluate_cost(results)
     _, err = fitter.evaluate_cost_and_std(results)
-    assert mean - 3*err < target_value
-    assert mean + 3*err > target_value
+    assert mean - 4*err < target_value
+    assert mean + 4*err > target_value
 
     # test in X-basis
     target_value = -2./3
@@ -167,8 +219,8 @@ def test_purity_boost_fitter():
     results = instance.execute(circs)
     mean = fitter.evaluate_cost(results)
     _, err = fitter.evaluate_cost_and_std(results)
-    assert mean - 3*err < target_value
-    assert mean + 3*err > target_value
+    assert mean - 4*err < target_value
+    assert mean + 4*err > target_value
 
 
 def test_purity_boost_fitter_shared_calibration():
@@ -213,10 +265,10 @@ def test_purity_boost_fitter_shared_calibration():
         and fitter_2.calibrator.calibrated
     )
     # has problems with target values near zero
-    # assert (mean - 3*err < target_value) and (mean + 3*err > target_value)
+    # assert (mean - 4*err < target_value) and (mean + 4*err > target_value)
 
     target_value = 1
     mean = fitter_1.evaluate_cost(results)
     _, err = fitter_1.evaluate_cost_and_std(results)
-    assert mean - 3*err < target_value
-    assert mean + 3*err > target_value
+    assert mean - 4*err < target_value
+    assert mean + 4*err > target_value

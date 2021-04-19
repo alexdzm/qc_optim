@@ -40,7 +40,16 @@ import qiskit as qk
 from qiskit.aqua.operators import WeightedPauliOperator as wpo
 from qiskit.aqua.operators import TPBGroupedWeightedPauliOperator as groupedwpo
 
-from .. import utilities as ut
+from ..utilities import (
+    gen_random_str,
+    quick_instance,
+    gen_meas_circuits,
+    pauli_correlation,
+    convert_wpo_and_openfermion,
+    convert_to_settings_and_weights,
+    bind_params,
+    qTNfromQASM,
+)
 
 # import itertools as it
 pi =np.pi
@@ -242,10 +251,10 @@ class Cost(CostInterface):
         """
         if debug: pdb.set_trace()
         if name is None:
-            name = 'circuit_' + ut.gen_random_str(5)
+            name = 'circuit_' + gen_random_str(5)
         self.name = name
         self.ansatz = ansatz
-        if instance is None: instance = ut.quick_instance()
+        if instance is None: instance = quick_instance()
         self.instance = instance
         self.nb_qubits = ansatz.nb_qubits  # may be redundant
         self.dim = np.power(2, ansatz.nb_qubits)
@@ -261,7 +270,7 @@ class Cost(CostInterface):
         #--------------------------------------
         self._untranspiled_main_circuit = copy.deepcopy(ansatz.circuit)
         self._qk_vars = ansatz.params
-        self._meas_circuits = ut.gen_meas_circuits(self._untranspiled_main_circuit, 
+        self._meas_circuits = gen_meas_circuits(self._untranspiled_main_circuit, 
                                                    self._list_meas)
         self._meas_circuits = self.instance.transpile(self._meas_circuits)
         self._label_circuits()
@@ -815,8 +824,8 @@ class RandomXYCost(Cost):
             for ii in range(self.nb_qubits):
                 for jj in range(self.nb_qubits):
                     if ii != jj:
-                        xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[0], ii, jj)
-                        xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[1], ii, jj)
+                        xy_term += self.hamiltonian[ii,jj] * pauli_correlation(count_list[0], ii, jj)
+                        xy_term += self.hamiltonian[ii,jj] * pauli_correlation(count_list[1], ii, jj)
             return xy_term
         return func
 
@@ -860,14 +869,14 @@ class RandomXYCostWithZ(Cost):
     def _gen_meas_func(self):
         def func(count_list):
             longitudinal_field = np.diag(self.hamiltonian)
-            field_term = [longitudinal_field[ii] * ut.pauli_correlation(count_list[0], ii) for ii in range(self.nb_qubits)]
+            field_term = [longitudinal_field[ii] * pauli_correlation(count_list[0], ii) for ii in range(self.nb_qubits)]
             field_term = sum(field_term)
             xy_term = 0
             for ii in range(self.nb_qubits):
                 for jj in range(self.nb_qubits):
                     if ii != jj:
-                        xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[1], ii, jj)
-                        xy_term += self.hamiltonian[ii,jj] * ut.pauli_correlation(count_list[2], ii, jj)
+                        xy_term += self.hamiltonian[ii,jj] * pauli_correlation(count_list[1], ii, jj)
+                        xy_term += self.hamiltonian[ii,jj] * pauli_correlation(count_list[2], ii, jj)
             return field_term + xy_term
         return func
 
@@ -1023,13 +1032,13 @@ class ChemistryCost(Cost):
             active_fermions=active_fermions
         )
         
-        weighted_pauli_op = ut.convert_wpo_and_openfermion(qubit_hamiltonian)
+        weighted_pauli_op = convert_wpo_and_openfermion(qubit_hamiltonian)
        
         #weighted_pauli_op = Z2Symmetries.two_qubit_reduction(weighted_pauli_op,num_particles)
         self._qk_wpo = weighted_pauli_op
         self._of_wpo = qubit_hamiltonian
         self._min_energy = molecule.hf_energy
-        weights, settings = ut.convert_to_settings_and_weights(weighted_pauli_op)
+        weights, settings = convert_to_settings_and_weights(weighted_pauli_op)
         self._base_weights = weights
         self._base_settings = settings
         super().__init__(ansatz, instance, **args)
@@ -1217,32 +1226,6 @@ def gen_meas_circuits(main_circuit, meas_settings, logical_qubits=None):
     print(" This has now beed moved to utilities")
     return None
 
-def bind_params(circ, param_values, param_variables, param_name = None):
-    """ Take a list of circuits with bindable parameters and bind the values 
-    passed according to the param_variables
-    Returns the list of circuits with bound values 
-    DOES NOT MODIFY INPUT (i.e. hardware details??)
-    Parameters
-    ----------
-    circ : single or list of quantum circuits with the same qk_vars
-    params_values: a 1d array of parameters (i.e. correspond to a single 
-        set of parameters)
-    param_variables: list of qk_vars, it should match element-wise
-        to the param_values
-    param_name: str if not None it will used to prepend the names
-        of the circuits created
-
-    Returns
-    -------
-        quantum circuits
-    """
-    if type(circ) != list: circ = [circ]
-    val_dict = {key:val for key,val in zip(param_variables, param_values)}
-    bound_circ = [cc.bind_parameters(val_dict) for cc in circ]
-    if param_name is not None:
-        bound_circ = ut.prefix_to_names(bound_circ, param_name)
-    return bound_circ  
-
 
 
 #======================#
@@ -1420,7 +1403,7 @@ class CostWPOquimb(CostWPO):
         param_pt = results[name]
         bound_circ = self.ansatz.circuit.bind_parameters(dict(zip(self.ansatz.params,param_pt)))
         # convert to TN
-        tn_of_ansatz = ut.qTNfromQASM(bound_circ.qasm())
+        tn_of_ansatz = qTNfromQASM(bound_circ.qasm())
         # first time need to unpack wpo into quimb form
         if not hasattr(self,'measurement_ops'):
             # total hack and reliant on exact form of `.print_details()` string, but works currently
@@ -1465,7 +1448,7 @@ if __name__ == '__main__':
         bound_circ = bind_params(ansatz.circuit, [1,2,3,4,5,6], ansatz.circuit.parameters)
 
         transpiled_cir = inst.transpile(bound_circ)[0]
-        m_c = ut.gen_meas_circuits(transpiled_cir, ['zzz'])
+        m_c = gen_meas_circuits(transpiled_cir, ['zzz'])
         res = inst.execute(m_c)
         counts = res.get_counts()
 

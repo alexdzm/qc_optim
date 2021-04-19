@@ -44,7 +44,9 @@ import random
 
 import qiskit as qk
 import numpy as np
-from . import utilities as ut
+
+from .utilities import gen_cyclic_graph
+
 
 class AnsatzInterface(metaclass=abc.ABCMeta):
     """Interface for a parameterised ansatz. Specifies an object that must have five
@@ -1158,7 +1160,7 @@ class _SandwitchAnsatzes():
         """
         [circ.h(ii) for ii in range(circ.num_qubits)]
         if graph == None:
-            graph = ut.gen_cyclic_graph(circ.num_qubits)
+            graph = gen_cyclic_graph(circ.num_qubits)
         [circ.cz(q[0],q[1]) for q in graph]  
     
     def _apply_rotation_layer(self, circ, gate, params):

@@ -10,8 +10,13 @@ from scipy.optimize import curve_fit
 from qiskit import QiskitError
 from qiskit.circuit.library import CXGate
 
-from .utilities import bootstrap_resample, add_random_measurements
-from .cost import CostInterface, correlation_fixed_u, bind_params
+from .cost import CostInterface, correlation_fixed_u
+from .utilities import (
+    bootstrap_resample,
+    add_random_measurements,
+    RandomMeasurementHandler,
+    bind_params,
+)
 
 
 class BaseCalibrator():
@@ -404,10 +409,12 @@ class PurityBoostCalibrator(BaseCalibrator):
         self,
         ansatz,
         instance,
-        num_random,
+        num_random=500,
         seed=None,
         num_bootstraps=1000,
         calibration_point=None,
+        circ_name=None,
+        rand_meas_handler=None,
     ):
         """ """
         self.ansatz = ansatz
@@ -416,7 +423,7 @@ class PurityBoostCalibrator(BaseCalibrator):
         self.seed = seed
         self.num_bootstraps = num_bootstraps
 
-        if not calibration_point:
+        if calibration_point is None:
             # random vector with elements in [0,2\pi]
             self.calibration_point = np.random.random(size=len(ansatz.params))
             self.calibration_point = 2. * np.pi * self.calibration_point
@@ -431,41 +438,52 @@ class PurityBoostCalibrator(BaseCalibrator):
         self.ptot = None
         self.ptot_std = None
 
-        # function used to name circuits
-        self._circ_name = lambda idx: 'ptot-cal-' + f'{idx}'
+        # default circ names
+        if circ_name is None:
+            def circ_name(idx):
+                return 'ptot-cal'+f'{idx}'
+
+        # make internal RandomMeasurementHandler in none passed
+        if rand_meas_handler is None:
+            self._rand_meas_handler = RandomMeasurementHandler(
+                self.ansatz,
+                self.instance,
+                self.num_random,
+                seed=self.seed,
+                circ_name=circ_name,
+            )
+        else:
+            self._rand_meas_handler = rand_meas_handler
 
         # call base calibration init
         BaseCalibrator.__init__(self)
 
     def make_calibration_circuits(self):
         """ """
-        bound_ansatz = bind_params(
-            self.ansatz.circuit,
-            self.calibration_point,
-            self.ansatz.params
-        )[0]
-        calibration_circuits = add_random_measurements(
-            bound_ansatz,
-            self.num_random,
-            seed=self.seed
-        )
+        return []
 
-        # name circuits so they can be found
-        for idx, circ in enumerate(calibration_circuits):
-            circ.name = self._circ_name(idx)
+    @property
+    def calibration_circuits(self):
+        """
+        Yield calibration circuits
+        """
+        return self._rand_meas_handler.circuits(self.calibration_point)
 
-        # transpile with instance ready for execution
-        t_calibration_circuits = self.instance.transpile(calibration_circuits)
-
-        return t_calibration_circuits
+    def reset(self):
+        """
+        Lose memory of waiting for calibration results, and having completed
+        calibration
+        """
+        self._rand_meas_handler.reset()
+        self.calibrated = False
 
     def process_calibration_results(self, results, name=None):
         """ """
         if name is not None:
             def _circ_name(idx):
-                return name + self._circ_name(idx)
+                return name + self._rand_meas_handler.circ_name(idx)
         else:
-            _circ_name = self._circ_name
+            _circ_name = self._rand_meas_handler._circ_name
 
         contributions_fixed_u = estimate_purity_fixed_u(
             results,
@@ -485,8 +503,8 @@ class PurityBoostCalibrator(BaseCalibrator):
             self.num_bootstraps,
         )
 
+        self._rand_meas_handler.reset()
         self.calibrated = True
-        self._yielded_calibration_circuits = False
 
     @property
     def ptot(self):

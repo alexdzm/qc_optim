@@ -33,9 +33,9 @@ class CrossFidelity(CostInterface):
         self,
         ansatz,
         instance,
+        nb_random=5,
         comparison_results=None,
         seed=0,
-        nb_random=5,
         subsample_size=None,
         prefix='HaarRandom',
     ):
@@ -485,7 +485,7 @@ def correlation_fixed_u(P_1, P_2):
     """
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
-    correlation_fixed_u = 0
+    corr_fixed_u = 0
     for sA, P_1_sA in P_1.items():
         for sAprime, P_2_sAprime in P_2.items():
 
@@ -493,8 +493,8 @@ def correlation_fixed_u(P_1, P_2):
             hamming_distance = int(
                 len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime))
             )
-            correlation_fixed_u += (
+            corr_fixed_u += (
                 (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
             )
 
-    return correlation_fixed_u
+    return corr_fixed_u

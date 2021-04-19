@@ -62,7 +62,7 @@ from .core import (
     qTNtoQk,
 )
 from .stats import bootstrap_resample
-from .circuit import add_random_measurements
+from .circuit import add_random_measurements, RandomMeasurementHandler, bind_params
 
 # list of * contents
 __all__ = [
