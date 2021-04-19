@@ -77,7 +77,6 @@ from qiskit.aqua.operators import Z2Symmetries, WeightedPauliOperator
 
 from .. import ansatz
 
-NoneType = type(None)
 pi = np.pi
 
 NB_SHOTS_DEFAULT = 256
@@ -331,7 +330,7 @@ class SafeString():
         TODO: allow ability to seed sequence"""
     def __init__(self, avoid_on_init = None):
 
-        if type(avoid_on_init) == NoneType:
+        if avoid_on_init is None:
             self._previous_random_objects = []
         elif type(avoid_on_init) == str:
             self._previous_random_objects = [avoid_on_init]
@@ -653,7 +652,7 @@ class Results():
         
         plt.plot(x_obs, 'rd', label='obs: ({})'.format(y_obs))
         plt.plot(x_pred, 'k*', label='pred: ({})'.format(y_pred))
-        if type(x_sol) == NoneType:
+        if x_sol is None:
             try:
                 x_sol = self.data['other']['x_sol']
             except:

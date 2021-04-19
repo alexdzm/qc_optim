@@ -32,9 +32,11 @@ from .core import (
     bind_params,
     CostWPO,
     CostWPOquimb,
+)
+from .crossfidelity import (
     CrossFidelity,
-    crossfidelity_from_results,
-    correlation_fixed_U,
+    crossfidelity_fixed_u,
+    correlation_fixed_u,
 )
 
 # list of * contents

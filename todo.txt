@@ -25,3 +25,9 @@ PROPOSALS
 
 -> cost
 	-> rename `bind_params_to_meas` function something like, `evaluation_circuits`
+
+CURRENT TODO's
+--------------
+
+[chris 16/04] -> write tests for CrossFidelity
+			  -> implement some sort of blocking/shared HaarRandom sampler

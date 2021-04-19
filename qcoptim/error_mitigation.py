@@ -9,73 +9,9 @@ from scipy.optimize import curve_fit
 
 from qiskit import QiskitError
 from qiskit.circuit.library import CXGate
-from qiskit.quantum_info import random_unitary
 
-from .cost import CostInterface, correlation_fixed_U, bind_params
-
-
-def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
-                       return_dist=False):
-    """
-    Calculate the boostrap mean and standard-error of `stat_func` applied to
-    `empirical_distribution` dataset. Optionally return the list of resampled
-    values of the estimator, instead of the standard error.
-
-    Parameters
-    ----------
-    stat_func : Callable
-        Function to evaluate on each bootstrap resample e.g. np.std
-    empirical_distribution : np.ndarray
-        Data to resample
-    num_bootstraps : int
-        Number of bootstrap resamples to perform
-    return_dist : boolean, default False
-        If True, return the list of resampled values of the estimator instead
-        of the standard error (see Returns)
-
-    Returns
-    -------
-    mean_estimate : float
-    standard_error OR resampled_values : float OR list[float]
-        If `return_dist=True` returns list of resampled values, else returns
-        standard error
-    """
-    num_data = empirical_distribution.size
-
-    try:
-        # try to vectorise the bootstrapping, unless the size of the resulting
-        # array will be too large (134217728 is approx the size of a 1GB
-        # float64 array)
-        if num_bootstraps * num_data > 134217728:
-            raise TypeError
-
-        # vectorisation will also fail if `stat_func` does not have an `axis`
-        # kwarg, which will raise a TypeError here
-        resample_indexes = np.random.randint(
-            0, num_data, size=(num_bootstraps, num_data))
-        resampled_estimator = stat_func(
-            empirical_distribution[resample_indexes], axis=1
-            )
-    except TypeError:
-        # more memory safe but much slower
-        resampled_estimator = np.zeros(num_bootstraps)
-        for boot in range(num_bootstraps):
-            resample_indexes = np.random.randint(0, num_data, size=num_data)
-            resampled_estimator[boot] = stat_func(
-                empirical_distribution[resample_indexes])
-
-    if return_dist:
-        # bootstrap estimate and list of resampled values
-        return (
-            np.mean(resampled_estimator),
-            resampled_estimator
-        )
-    # bootstrap estimate and standard deviation
-    return (
-        np.mean(resampled_estimator),
-        np.sqrt(np.mean(resampled_estimator**2)
-                - np.mean(resampled_estimator)**2)
-    )
+from .utilities import bootstrap_resample, add_random_measurements
+from .cost import CostInterface, correlation_fixed_u, bind_params
 
 
 class BaseCalibrator():
@@ -312,7 +248,7 @@ class CXMultiplierFitter(BaseFitter):
         # extrapolate to zero
         mean, std = self.extrapolator(raw_cost_series, raw_cost_vars)
 
-        # save last evaluation (could replace with callback arg)
+        # save last evaluation
         self.last_evaluation = {
             'stretch_factors': self.stretch_factors,
             'raw_cost_series': raw_cost_series,
@@ -337,45 +273,6 @@ class CXMultiplierFitter(BaseFitter):
 # Purity estimation
 # -----------------
 #
-
-
-def add_random_measurements(circuit, num_rand, seed=None):
-    """
-    Add single qubit measurements in Haar random basis to all the qubits, at
-    the end of the circuit. Used to infer the purity of the output state.
-    Copies the circuit so preserves registers, parameters and circuit name.
-    Independent of what measurements were in the input circuit, all qubits will
-    be measured.
-
-    Parameters
-    ----------
-    circuit : qiskit circuit
-    num_rand : int
-        Number of random unitaries to use
-    seed : int, optional
-        Random number seed for reproducibility
-
-    Returns
-    -------
-    purity_circuits : list of qiskit circuits
-        Copies of input circuit(s), with random unitaries added to the end
-    """
-    rand_state = np.random.default_rng(seed)
-
-    rand_meas_circuits = []
-    for _ in range(num_rand):
-
-        # copy circuit to preserve registers, but remove any final measurements
-        new_circ = circuit.copy()
-        new_circ.remove_final_measurements()
-        # add random single qubit unitaries
-        for qb_idx in range(new_circ.num_qubits):
-            rand_gate = random_unitary(2, seed=rand_state)
-            new_circ.append(rand_gate, [qb_idx])
-        new_circ.measure_all()
-        rand_meas_circuits.append(new_circ)
-
-    return rand_meas_circuits
 
 
 def estimate_purity_fixed_u(
@@ -422,7 +319,7 @@ def estimate_purity_fixed_u(
 
     # iterate over the different random unitaries
     contributions_fixed_u = np.zeros(len(unitaries_set))
-    for uidx in unitaries_set:
+    for idx, uidx in enumerate(unitaries_set):
 
         # try to extract matching experiment data
         try:
@@ -446,8 +343,8 @@ def estimate_purity_fixed_u(
                 + f'{prob_rho_fixed_u.keys()}'
             )
 
-        contributions_fixed_u[uidx] = correlation_fixed_U(prob_rho_fixed_u,
-                                                          prob_rho_fixed_u)
+        contributions_fixed_u[idx] = correlation_fixed_u(prob_rho_fixed_u,
+                                                         prob_rho_fixed_u)
 
     # normalisation
     contributions_fixed_u = (2**nb_qubits)*contributions_fixed_u

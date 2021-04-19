@@ -2,7 +2,6 @@
 """
 
 from .core import (
-    NoneType,
     pi,
     BackendManager,
     Batch,
@@ -62,6 +61,8 @@ from .core import (
     qTNfromQASM,
     qTNtoQk,
 )
+from .stats import bootstrap_resample
+from .circuit import add_random_measurements
 
 # list of * contents
 __all__ = [

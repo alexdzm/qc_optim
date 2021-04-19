@@ -1,0 +1,500 @@
+"""
+Cross-fidelity cost classes and functions
+"""
+
+import sys
+
+import numpy as np
+import scipy as sp
+
+from qiskit import QiskitError
+from qiskit.result import Result
+
+from ..utilities import add_random_measurements, bootstrap_resample
+from .core import CostInterface, bind_params
+
+
+class CrossFidelity(CostInterface):
+    """
+    Cost class to implement offline CrossFidelity measurements between two
+    quantum states (arxiv:1909.01282)
+
+    NOTE: when subsampling we would ideally keep track of the circs that were
+    submitted to the `execute` call and then extract those results elements
+    e.g. using a `_last_subsample_set` variable. But because of the way we use
+    the Cost obj for information sharing this might not always be possible. We
+    offer a fallback strategy of iterating over the full set of nb_random
+    circuits and try...except to see if they are in the Results obj. In this
+    case the _nb_random used in the statistics is determined dynamically. As a
+    weak check this approach fails if the number of results founds in the obj
+    is less than `self._subsample_size`.
+    """
+    def __init__(
+        self,
+        ansatz,
+        instance,
+        comparison_results=None,
+        seed=0,
+        nb_random=5,
+        subsample_size=None,
+        prefix='HaarRandom',
+    ):
+        """
+        Parameters
+        ----------
+        ansatz : object implementing AnsatzInterface
+            The ansatz object that this cost can be optimsed over
+        instance : qiskit quantum instance
+            Will be used to generate internal transpiled circuits
+        comparison_results : {dict, None}
+            The use cases where None would be passed is if we are using
+            this object to generate the comparison_results object for a
+            future instance of CrossFidelity. This robustly ensures that
+            the results objs to compare are compatible.
+            If dict is passed it should be a qiskit results object that
+            has been converted to a dict using its `to_dict` method.
+            Ideally this would have been tagged with CrossFidelity
+            metadata using this classes `tag_results_metadata` method.
+        seed : int, optional
+            Seed used to generate random unitaries
+        nb_random : int, optional
+            The number of random unitaries to average over
+        subsample_size : int or None
+            If this is not None, then nb_random becomes the total number
+            of random measurement basis to generate and each time method
+            `bind_params_to_meas` is called it will randomly select this
+            number out of those total circuits to measure this time.
+        prefix : string, optional
+            String to use to label the measurement circuits generated
+        """
+
+        # store inputs
+        self.ansatz = ansatz
+        self.instance = instance
+
+        # store hidden properties
+        self._nb_random = nb_random
+        if not isinstance(self._nb_random, int) and (self._nb_random > 0):
+            raise ValueError('nb_random is invalid.')
+        self._prefix = prefix
+        self._seed = seed
+
+        # generate and store set of measurement circuits here
+        self._meas_circuits = add_random_measurements(self.ansatz.circuit,
+                                                      nb_random, seed=seed)
+        for idx, circ in enumerate(self._meas_circuits):
+            circ.name = self._prefix+str(idx)
+        self._meas_circuits = self.instance.transpile(self._meas_circuits)
+
+        # run setter (see below)
+        self.comparison_results = comparison_results
+
+        # setup subsampling
+        self._subsample_size = subsample_size
+        if subsample_size is not None:
+            # use same seed as generating random measurement basis for
+            # reproducibility
+            self._subsampling_rng = np.random.default_rng(seed)
+            self._last_subsample_set = None
+
+        # related to last evaluation
+        self.last_evaluation = None
+
+    @property
+    def nb_random(self):
+        return self._nb_random
+
+    @property
+    def seed(self):
+        return self._seed
+
+    @property
+    def comparison_results(self):
+        return self._comparison_results
+
+    @comparison_results.setter
+    def comparison_results(self, results):
+        """
+        setter for comparison_results, perform validations
+        """
+        # check if comparison_results contains the crossfidelity_metadata
+        # tags and if it does compare them, if these comparisons fail then
+        # crash, if the crossfidelity_metadata is missing issue a warning
+        if results is not None:
+            if not isinstance(results, dict):
+                results = results.to_dict()
+
+            comparison_metadata = None
+            try:
+                comparison_metadata = results['crossfidelity_metadata']
+            except KeyError:
+                print(
+                    'Warning, input results dictionary does not contain'
+                    + ' crossfidelity_metadata and so we cannot confirm that'
+                    + ' the results are compatible. If the input results'
+                    + ' object was collecting by this class consider using'
+                    + ' the tag_results_metadata method to add the'
+                    + ' crossfidelity_metadata.', file=sys.stderr
+                )
+            if comparison_metadata is not None:
+                if (
+                    self._seed == comparison_metadata['seed']
+                    or (not self._nb_random > comparison_metadata['nb_random'])
+                    or self._prefix == comparison_metadata['prefix']
+                ):
+                    raise ValueError(
+                        'Input results dictionary contains data that is'
+                        + ' incompatible with the this CrossFidelity object.'
+                    )
+
+            # bug fix, need counts dict keys to be hex values
+            for val in results['results']:
+                new_counts = {}
+                for ckey, cval in val['data']['counts'].items():
+                    # detect it is not hex
+                    if not ckey[:2] == '0x':
+                        ckey = hex(int(ckey, 2))
+                    new_counts[ckey] = cval
+                val['data']['counts'] = new_counts
+
+        self._comparison_results = results
+
+    def tag_results_metadata(self, results):
+        """
+        Adds in CrossFidelity metadata to a results object. This can be
+        used to ensure that two results sets are compatible.
+
+        Parameters
+        ----------
+        results : Qiskit results type, or dict
+            The results data to process
+
+        Returns
+        -------
+        results : dict
+            Results dictionary with the CrossFidelity metadata added
+        """
+        # warn if using subsampling
+        if (
+            (self._subsample_size is not None)
+            and (not self._subsample_size == self.nb_random)
+        ):
+            print('Warning. Obj was using subsampling and so these results do'
+                  + ' not include all nb_random measurement settings.')
+
+        # convert results to dict if needed
+        if not isinstance(results, dict):
+            results = results.to_dict()
+        # add CrossFidelity metadata
+        results.update({
+            'crossfidelity_metadata': {
+                'seed': self._seed,
+                'nb_random': self._nb_random,
+                'prefix': self._prefix,
+                }
+            })
+        return results
+
+    def bind_params_to_meas(self, params=None, params_names=None):
+        """
+        Bind a list of parameters to named measurable circuits of the
+        cost function
+
+        Parameters
+        ----------
+        params: None, or 1d, 2d numpy array
+            If None the function will return the unbound measurement
+            circuit, else it will bind each parameter to each of the
+            measurable circuits
+
+        Returns
+        -------
+            quantum circuits
+                The bound or unbound named measurement circuits
+        """
+        if params is None:
+            bound_circuits = self._meas_circuits[:self._subsample_size]
+        else:
+            params = np.atleast_2d(params)
+            if isinstance(params_names, str):
+                params_names = [params_names]
+            if params_names is None:
+                params_names = [None] * len(params)
+            else:
+                assert len(params_names) == len(params)
+
+            # (optionally) select the next subsample of measurement basis
+            if self._subsample_size is not None:
+                # (`replace` kwarg ensures there is no repeated choices)
+                self._last_subsample_set = self._subsampling_rng.choice(
+                    self.nb_random, size=self._subsample_size, replace=False)
+                _meas_circuits = [
+                    self._meas_circuits[i] for i in self._last_subsample_set
+                ]
+            else:
+                _meas_circuits = self._meas_circuits
+
+            bound_circuits = []
+            for param, param_name in zip(params, params_names):
+                bound_circuits += bind_params(_meas_circuits, param,
+                                              self.qk_vars, param_name)
+        return bound_circuits
+
+    def evaluate_cost(
+        self,
+        results,
+        name='',
+        **kwargs
+    ):
+        """
+        Calculates the cross-fidelity using two sets of qiskit results.
+        The variable names are chosen to match arxiv:1909.01282 as close
+        as possible.
+
+        Parameters
+        ----------
+        results : Qiskit results type
+            Results to calculate cross-fidelity with, against the stored
+            results dictionary.
+
+        Returns
+        -------
+        cross_fidelity : float
+            Evaluated cross-fidelity
+        """
+        return self.evaluate_cost_and_std(results, name=name, **kwargs)[0]
+
+    def evaluate_cost_and_std(
+        self,
+        results,
+        name='',
+        **kwargs
+    ):
+        """
+        Calculates the cross-fidelity using two sets of qiskit results.
+        The variable names are chosen to match arxiv:1909.01282 as close
+        as possible.
+
+        Parameters
+        ----------
+        results : Qiskit results type
+            Results to calculate cross-fidelity with, against the stored
+            results dictionary.
+
+        Returns
+        -------
+        cross_fidelity : float
+            Evaluated cross-fidelity
+        cross_fidelity_std : float
+            Standard error on cross-fidelity estimation, obtained from
+            bootstrap resampling
+        """
+
+        # we make it possible to instance a CrossFidelity obj without a
+        # comparison_results dict so that we can easily generate the
+        # comparison data using the same setup (e.g. seed, prefix). But
+        # in that case cannote evaluate the cost.
+        if self._comparison_results is None:
+            raise ValueError('No comparison results set has been passed to'
+                             + ' CrossFidelity obj.')
+
+        # convert comparison_results back to qiskit results obj, so we can
+        # use `get_counts` method
+        comparison_results = Result.from_dict(self._comparison_results)
+
+        # setup depending on whether we are subsampling
+        if self._subsample_size is not None:
+            _nb_random = self._subsample_size
+            try:
+                # assumes this is being called directly after a call to
+                # `bind_params_to_meas`, which sets `self._last_subsample_set`,
+                # else the `results.get_counts` calls below will likely fail
+                unitaries_set = self._last_subsample_set
+            except AttributeError:
+                # see 'NOTE' in docstring above
+                _nb_random = self._nb_random
+                unitaries_set = range(_nb_random)
+        else:
+            _nb_random = self._nb_random
+            unitaries_set = range(_nb_random)
+
+        (dist_tr_rhoA_rhoB,
+         dist_tr_rhoA_2,
+         dist_tr_rhoB_2) = crossfidelity_fixed_u(
+         results, comparison_results, unitaries_set=unitaries_set,
+         prefixA=name + self._prefix, prefixB=self._prefix,
+        )
+
+        # bootstrap resample for means and std-errs
+        tr_rhoA_rhoB, tr_rhoA_rhoB_err = bootstrap_resample(
+            np.mean, dist_tr_rhoA_rhoB, 1000,
+        )
+        tr_rhoA_2, tr_rhoA_2_err = bootstrap_resample(
+            np.mean, dist_tr_rhoA_2, 1000,
+        )
+        tr_rhoB_2, tr_rhoB_2_err = bootstrap_resample(
+            np.mean, dist_tr_rhoB_2, 1000,
+        )
+
+        # divide by largest
+        if tr_rhoA_2 > tr_rhoB_2:
+            mean = tr_rhoA_rhoB / tr_rhoA_2
+            std = (mean**2) * (
+                (tr_rhoA_rhoB_err**2) / (tr_rhoA_rhoB)**2
+                + (tr_rhoA_2_err)**2 / (tr_rhoA_2)**2
+            )
+        else:
+            mean = tr_rhoA_rhoB / tr_rhoB_2
+            std = (mean**2) * (
+                (tr_rhoA_rhoB_err**2) / (tr_rhoA_rhoB)**2
+                + (tr_rhoB_2_err)**2 / (tr_rhoB_2)**2
+            )
+
+        # store results of evaluation
+        self.last_evaluation = {
+            'tr_rhoA_rhoB': tr_rhoA_rhoB,
+            'tr_rhoA_rhoB_err': tr_rhoA_rhoB_err,
+            'tr_rhoA_2': tr_rhoA_2,
+            'tr_rhoA_2_err': tr_rhoA_2_err,
+            'tr_rhoB_2': tr_rhoB_2,
+            'tr_rhoB_2_err': tr_rhoB_2_err,
+            'mean': mean,
+            'std': std,
+        }
+
+        return mean, std
+
+
+def crossfidelity_fixed_u(
+    resultsA,
+    resultsB,
+    nb_random=None,
+    unitaries_set=None,
+    prefixA='HaarRandom',
+    prefixB='HaarRandom',
+):
+    """
+    Function to calculate the offline CrossFidelity between two quantum states
+    (arxiv:1909.01282).
+
+    Parameters
+    ----------
+    resultsA,resultsB : Qiskit results type
+        Results to calculate cross-fidelity between
+    nb_random : (optional*) int
+    unitaries_set : (optional*) list of ints
+        One of these two args must be supplied, with nb_random taking
+        precedence. Used to locate relevant measurement results in the
+        qiksit result objs.
+    prefixA : (optional) str
+    prefixB : (optional) str
+        Prefixes for locating relevant results in qiskit result objs.
+
+    Returns
+    -------
+    tr_rhoA_rhoB : float
+    tr_rhoA_2 : float
+    tr_rhoB_2 : float
+    """
+    nb_qubits = None
+
+    # parse nb_random/unitaries_set args
+    if (nb_random is None) and (unitaries_set is None):
+        raise ValueError(
+            'Please specify either the number of random unitaries'
+            + ' (`nb_random`), or the specific indexes of the random unitaries'
+            + ' to include (`unitaries_set`).')
+    if nb_random is not None:
+        unitaries_set = range(nb_random)
+    else:
+        nb_random = len(unitaries_set)
+
+    # iterate over the different random unitaries
+    tr_rhoA_rhoB = np.zeros(len(unitaries_set))
+    tr_rhoA_2 = np.zeros(len(unitaries_set))
+    tr_rhoB_2 = np.zeros(len(unitaries_set))
+    for idx, uidx in enumerate(unitaries_set):
+
+        # try to extract matching experiment data
+        try:
+            countsdict_rhoA_fixedU = resultsA.get_counts(prefixA+str(uidx))
+            countsdict_rhoB_fixedU = resultsB.get_counts(prefixB+str(uidx))
+        except QiskitError as missing_exp:
+            raise ValueError('Cannot extract matching experiment data to'
+                             + ' calculate cross-fidelity.') from missing_exp
+
+        # normalise counts dict to give empirical probability dists
+        P_rhoA_fixedU = {
+            k: v/sum(countsdict_rhoA_fixedU.values())
+            for k, v in countsdict_rhoA_fixedU.items()
+        }
+        P_rhoB_fixedU = {
+            k: v/sum(countsdict_rhoB_fixedU.values())
+            for k, v in countsdict_rhoB_fixedU.items()
+        }
+
+        # use this to check number of qubits has been consistent
+        # over all random unitaries
+        if nb_qubits is None:
+            # get the first dict key string and find its length
+            nb_qubits = len(list(P_rhoA_fixedU.keys())[0])
+        if not nb_qubits == len(list(P_rhoA_fixedU.keys())[0]):
+            raise ValueError(
+                'nb_qubits='+f'{nb_qubits}' + ', P_rhoA_fixedU.keys()='
+                + f'{P_rhoA_fixedU.keys()}'
+            )
+        if not nb_qubits == len(list(P_rhoB_fixedU.keys())[0]):
+            raise ValueError(
+                'nb_qubits='+f'{nb_qubits}' + ', P_rhoB_fixedU.keys()='
+                + f'{P_rhoB_fixedU.keys()}'
+            )
+
+        tr_rhoA_rhoB[idx] = correlation_fixed_u(P_rhoA_fixedU, P_rhoB_fixedU)
+        tr_rhoA_2[idx] = correlation_fixed_u(P_rhoA_fixedU, P_rhoA_fixedU)
+        tr_rhoB_2[idx] = correlation_fixed_u(P_rhoB_fixedU, P_rhoB_fixedU)
+
+    # normalisations
+    tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB
+    tr_rhoA_2 = (2**nb_qubits)*tr_rhoA_2
+    tr_rhoB_2 = (2**nb_qubits)*tr_rhoB_2
+
+    return tr_rhoA_rhoB, tr_rhoA_2, tr_rhoB_2
+
+
+def correlation_fixed_u(P_1, P_2):
+    """
+    Carries out the inner loop calculation of the Cross-Fidelity. In
+    contrast to the paper, arxiv:1909.01282, it makes sense for us to
+    make the sum over sA and sA' the inner loop. So this computes the
+    sum over sA and sA' for fixed random U.
+
+    Parameters
+    ----------
+    P_1 : dict (normalised counts dictionary)
+        The empirical distribution for the measurments on qubit 1
+        P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
+        where U is a fixed, randomly chosen unitary, and s_A is all possible
+        binary strings in the computational basis
+    P_2 : dict (normalised counts dictionary)
+        Same for qubit 2.
+
+    Return
+    ------
+    correlation_fixed_u : float
+        Evaluation of the inner sum of the cross-fidelity
+    """
+    # iterate over the elements of the computational basis (that
+    # appear in the measurement results)sublimes
+    correlation_fixed_u = 0
+    for sA, P_1_sA in P_1.items():
+        for sAprime, P_2_sAprime in P_2.items():
+
+            # add up contribution
+            hamming_distance = int(
+                len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime))
+            )
+            correlation_fixed_u += (
+                (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
+            )
+
+    return correlation_fixed_u
