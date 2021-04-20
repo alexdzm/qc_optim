@@ -4,10 +4,10 @@ Tests for utilities
 
 import numpy as np
 
-from qiskit import Aer
+from qiskit import Aer, QuantumCircuit
 from qiskit.aqua import QuantumInstance
 
-from qcoptim.ansatz import RandomAnsatz
+from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
 from qcoptim.utilities import (
     RandomMeasurementHandler,
 )
@@ -15,7 +15,7 @@ from qcoptim.utilities import (
 
 def test_random_measurement_handler():
     """ """
-    num_random = 500
+    num_random = 10
     seed = 0
 
     def circ_name(idx):
@@ -48,3 +48,21 @@ def test_random_measurement_handler():
     circs2 = rand_meas_handler.circuits(point2)
     assert len(circs2) == num_random
     assert circs2[0].name == 'HaarRandom0'
+
+
+def test_random_measurement_handler_trivial_ansatz():
+    """
+    Test special case of ansatz with no parameters
+    """
+    num_random = 10
+    seed = 0
+
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    circ = QuantumCircuit(2)
+    rand_meas_handler = RandomMeasurementHandler(
+        TrivialAnsatz(circ), instance, num_random, seed=seed,
+    )
+
+    circs = rand_meas_handler.circuits([])
+    assert len(circs) == num_random
+    assert rand_meas_handler.circuits([]) == []

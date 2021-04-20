@@ -1,4 +1,5 @@
 """
+Circuit utilities
 """
 
 import numpy as np
@@ -129,6 +130,13 @@ class RandomMeasurementHandler():
         """
         Yield circuits
         """
+        # special case, circuit has no parameters to bind
+        if self.ansatz.nb_params == 0:
+            if self._last_point is None:
+                self._last_point = 0
+                return self._meas_circuits
+            return []
+
         if not isinstance(point, np.ndarray):
             raise TypeError("point passed to RandomMeasurementHandler as type "
                             + f'{type(point)}')

@@ -13,7 +13,7 @@ from qiskit.quantum_info.operators import Pauli
 
 from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
 from qcoptim.utilities import RandomMeasurementHandler
-from qcoptim.cost import CostWPO
+from qcoptim.cost import CostWPO, CrossFidelity
 from qcoptim.error_mitigation import (
     multiply_cx,
     CXMultiplierFitter,
@@ -272,3 +272,53 @@ def test_purity_boost_fitter_shared_calibration():
     _, err = fitter_1.evaluate_cost_and_std(results)
     assert mean - 4*err < target_value
     assert mean + 4*err > target_value
+
+
+def test_purity_boost_fitter_sharing_with_crossfid():
+    """ """
+    num_random = 10
+    seed = 0
+
+    def circ_name(idx):
+        return 'test_circ'+f'{idx}'
+
+    ansatz = RandomAnsatz(2, 2)
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    rand_meas_handler = RandomMeasurementHandler(
+        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+    )
+
+    # evaluation point
+    point = np.ones(ansatz.nb_params)
+
+    # create cost fitter obj
+    calibrator = PurityBoostCalibrator(
+        ansatz, instance, rand_meas_handler=rand_meas_handler,
+        calibration_point=point,
+    )
+    wpo = WeightedPauliOperator([
+        (1., Pauli.from_label('ZZ')),
+    ])
+    cost = CostWPO(ansatz, instance, wpo)
+    fitter = PurityBoostFitter(cost, calibrator=calibrator)
+
+    # cross fid obj using same rand_meas_handler
+    crossfid = CrossFidelity(
+        ansatz,
+        instance,
+        rand_meas_handler=rand_meas_handler,
+        prefixB='test_circ',
+    )
+
+    # get circs
+    circs = crossfid.bind_params_to_meas(point)
+    assert len(circs) == num_random
+    new_circs = fitter.bind_params_to_meas(point)
+    assert len(new_circs) == 1
+
+    # execute and test results processing
+    results = instance.execute(circs + new_circs)
+    _ = fitter.evaluate_cost(results)
+    assert fitter.calibrator.calibrated
+    crossfid.comparison_results = results
+    _ = crossfid.evaluate_cost(results)

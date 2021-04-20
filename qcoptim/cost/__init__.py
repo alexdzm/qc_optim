@@ -33,11 +33,7 @@ from .core import (
     CostWPO,
     CostWPOquimb,
 )
-from .crossfidelity import (
-    CrossFidelity,
-    crossfidelity_fixed_u,
-    correlation_fixed_u,
-)
+from .crossfidelity import CrossFidelity
 
 # list of * contents
 __all__ = [

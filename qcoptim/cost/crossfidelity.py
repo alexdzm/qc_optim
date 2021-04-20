@@ -10,8 +10,12 @@ import scipy as sp
 from qiskit import QiskitError
 from qiskit.result import Result
 
-from ..utilities import add_random_measurements, bootstrap_resample
-from .core import CostInterface, bind_params
+from ..utilities import (
+    bootstrap_resample,
+    RandomMeasurementHandler,
+)
+
+from .core import CostInterface
 
 
 class CrossFidelity(CostInterface):
@@ -34,10 +38,12 @@ class CrossFidelity(CostInterface):
         ansatz,
         instance,
         nb_random=5,
-        comparison_results=None,
         seed=0,
+        comparison_results=None,
         subsample_size=None,
-        prefix='HaarRandom',
+        prefixA='CrossFid',
+        prefixB='CrossFid',
+        rand_meas_handler=None,
     ):
         """
         Parameters
@@ -68,23 +74,24 @@ class CrossFidelity(CostInterface):
             String to use to label the measurement circuits generated
         """
 
-        # store inputs
-        self.ansatz = ansatz
-        self.instance = instance
-
-        # store hidden properties
-        self._nb_random = nb_random
-        if not isinstance(self._nb_random, int) and (self._nb_random > 0):
+        if not isinstance(nb_random, int) and (nb_random > 0):
             raise ValueError('nb_random is invalid.')
-        self._prefix = prefix
-        self._seed = seed
 
-        # generate and store set of measurement circuits here
-        self._meas_circuits = add_random_measurements(self.ansatz.circuit,
-                                                      nb_random, seed=seed)
-        for idx, circ in enumerate(self._meas_circuits):
-            circ.name = self._prefix+str(idx)
-        self._meas_circuits = self.instance.transpile(self._meas_circuits)
+        self._prefixB = prefixB
+
+        # make internal RandomMeasurementHandler in none passed
+        def circ_name(idx):
+            return prefixA + f'{idx}'
+        if rand_meas_handler is None:
+            self._rand_meas_handler = RandomMeasurementHandler(
+                ansatz,
+                instance,
+                nb_random,
+                seed=seed,
+                circ_name=circ_name,
+            )
+        else:
+            self._rand_meas_handler = rand_meas_handler
 
         # run setter (see below)
         self.comparison_results = comparison_results
@@ -102,11 +109,19 @@ class CrossFidelity(CostInterface):
 
     @property
     def nb_random(self):
-        return self._nb_random
+        return self._rand_meas_handler.num_random
 
     @property
     def seed(self):
-        return self._seed
+        return self._rand_meas_handler.seed
+
+    @property
+    def ansatz(self):
+        return self._rand_meas_handler.ansatz
+
+    @property
+    def instance(self):
+        return self._rand_meas_handler.instance
 
     @property
     def comparison_results(self):
@@ -137,14 +152,18 @@ class CrossFidelity(CostInterface):
                     + ' crossfidelity_metadata.', file=sys.stderr
                 )
             if comparison_metadata is not None:
-                if (
-                    self._seed == comparison_metadata['seed']
-                    or (not self._nb_random > comparison_metadata['nb_random'])
-                    or self._prefix == comparison_metadata['prefix']
-                ):
+                if self.seed != comparison_metadata['seed']:
                     raise ValueError(
-                        'Input results dictionary contains data that is'
-                        + ' incompatible with the this CrossFidelity object.'
+                        'Comparison results use different random seed.'
+                    )
+                if self.nb_random > comparison_metadata['nb_random']:
+                    raise ValueError(
+                        'Comparison results use fewer random basis.'
+                    )
+                if self._prefixB != comparison_metadata['prefixA']:
+                    raise ValueError(
+                        'Passed prefixB does not match prefixA of comparison'
+                        + ' results.'
                     )
 
             # bug fix, need counts dict keys to be hex values
@@ -180,7 +199,8 @@ class CrossFidelity(CostInterface):
             and (not self._subsample_size == self.nb_random)
         ):
             print('Warning. Obj was using subsampling and so these results do'
-                  + ' not include all nb_random measurement settings.')
+                  + ' not include all nb_random measurement settings.',
+                  file=sys.stderr)
 
         # convert results to dict if needed
         if not isinstance(results, dict):
@@ -188,9 +208,9 @@ class CrossFidelity(CostInterface):
         # add CrossFidelity metadata
         results.update({
             'crossfidelity_metadata': {
-                'seed': self._seed,
-                'nb_random': self._nb_random,
-                'prefix': self._prefix,
+                'seed': self.seed,
+                'nb_random': self.nb_random,
+                'prefixA': self._rand_meas_handler.circ_name(''),
                 }
             })
         return results
@@ -213,31 +233,40 @@ class CrossFidelity(CostInterface):
                 The bound or unbound named measurement circuits
         """
         if params is None:
-            bound_circuits = self._meas_circuits[:self._subsample_size]
-        else:
-            params = np.atleast_2d(params)
-            if isinstance(params_names, str):
-                params_names = [params_names]
-            if params_names is None:
-                params_names = [None] * len(params)
-            else:
-                assert len(params_names) == len(params)
+            raise ValueError('Bound circuits requested without params given.')
 
-            # (optionally) select the next subsample of measurement basis
-            if self._subsample_size is not None:
-                # (`replace` kwarg ensures there is no repeated choices)
-                self._last_subsample_set = self._subsampling_rng.choice(
-                    self.nb_random, size=self._subsample_size, replace=False)
-                _meas_circuits = [
-                    self._meas_circuits[i] for i in self._last_subsample_set
-                ]
-            else:
-                _meas_circuits = self._meas_circuits
+        params = np.atleast_2d(params)
+        if isinstance(params_names, str):
+            params_names = [params_names]
+        if params_names is None:
+            params_names = [None] * len(params)
+        elif not len(params_names) == len(params):
+            raise ValueError(
+                'params_names passed has different lengh to params.'
+            )
 
-            bound_circuits = []
-            for param, param_name in zip(params, params_names):
-                bound_circuits += bind_params(_meas_circuits, param,
-                                              self.qk_vars, param_name)
+        # (optionally) select the next subsample of measurement basis
+        if self._subsample_size is not None:
+            # (`replace` kwarg ensures there is no repeated choices)
+            self._last_subsample_set = self._subsampling_rng.choice(
+                self.nb_random, size=self._subsample_size, replace=False
+            )
+
+        # get circuits from rand_meas_handler
+        bound_circuits = []
+        for point in params:
+            new_circs = self._rand_meas_handler.circuits(point)
+
+            # (optionally) subsample, `new_circs==[]` may result if the
+            # rand_meas_handler is shared with other objs
+            if (
+                self._subsample_size is not None
+                and new_circs != []
+            ):
+                new_circs = [new_circs[i] for i in self._last_subsample_set]
+
+            bound_circuits += new_circs
+
         return bound_circuits
 
     def evaluate_cost(
@@ -304,7 +333,7 @@ class CrossFidelity(CostInterface):
 
         # setup depending on whether we are subsampling
         if self._subsample_size is not None:
-            _nb_random = self._subsample_size
+            nb_random = self._subsample_size
             try:
                 # assumes this is being called directly after a call to
                 # `bind_params_to_meas`, which sets `self._last_subsample_set`,
@@ -312,17 +341,23 @@ class CrossFidelity(CostInterface):
                 unitaries_set = self._last_subsample_set
             except AttributeError:
                 # see 'NOTE' in docstring above
-                _nb_random = self._nb_random
-                unitaries_set = range(_nb_random)
+                nb_random = self.nb_random
+                unitaries_set = range(nb_random)
         else:
-            _nb_random = self._nb_random
-            unitaries_set = range(_nb_random)
+            nb_random = self.nb_random
+            unitaries_set = range(nb_random)
+
+        # circuit naming functions
+        def circ_namesA(idx):
+            return name + self._rand_meas_handler.circ_name(idx)
+        def circ_namesB(idx):
+            return self._prefixB + f'{idx}'
 
         (dist_tr_rhoA_rhoB,
          dist_tr_rhoA_2,
-         dist_tr_rhoB_2) = crossfidelity_fixed_u(
+         dist_tr_rhoB_2) = _crossfidelity_fixed_u(
          results, comparison_results, unitaries_set=unitaries_set,
-         prefixA=name + self._prefix, prefixB=self._prefix,
+         circ_namesA=circ_namesA, circ_namesB=circ_namesB,
         )
 
         # bootstrap resample for means and std-errs
@@ -365,13 +400,13 @@ class CrossFidelity(CostInterface):
         return mean, std
 
 
-def crossfidelity_fixed_u(
+def _crossfidelity_fixed_u(
     resultsA,
     resultsB,
     nb_random=None,
     unitaries_set=None,
-    prefixA='HaarRandom',
-    prefixB='HaarRandom',
+    circ_namesA=None,
+    circ_namesB=None,
 ):
     """
     Function to calculate the offline CrossFidelity between two quantum states
@@ -398,6 +433,14 @@ def crossfidelity_fixed_u(
     """
     nb_qubits = None
 
+    # default circuit naming functions
+    if circ_namesA is None:
+        def circ_namesA(idx):
+            return 'CrossFid' + f'{idx}'
+    if circ_namesB is None:
+        def circ_namesB(idx):
+            return 'CrossFid' + f'{idx}'
+
     # parse nb_random/unitaries_set args
     if (nb_random is None) and (unitaries_set is None):
         raise ValueError(
@@ -417,8 +460,13 @@ def crossfidelity_fixed_u(
 
         # try to extract matching experiment data
         try:
-            countsdict_rhoA_fixedU = resultsA.get_counts(prefixA+str(uidx))
-            countsdict_rhoB_fixedU = resultsB.get_counts(prefixB+str(uidx))
+            countsdict_rhoA_fixedU = resultsA.get_counts(circ_namesA(uidx))
+        except QiskitError as missing_exp:
+            raise ValueError('Cannot extract matching experiment data to'
+                             + ' calculate cross-fidelity.') from missing_exp
+
+        try:
+            countsdict_rhoB_fixedU = resultsB.get_counts(circ_namesB(uidx))
         except QiskitError as missing_exp:
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
@@ -449,9 +497,9 @@ def crossfidelity_fixed_u(
                 + f'{P_rhoB_fixedU.keys()}'
             )
 
-        tr_rhoA_rhoB[idx] = correlation_fixed_u(P_rhoA_fixedU, P_rhoB_fixedU)
-        tr_rhoA_2[idx] = correlation_fixed_u(P_rhoA_fixedU, P_rhoA_fixedU)
-        tr_rhoB_2[idx] = correlation_fixed_u(P_rhoB_fixedU, P_rhoB_fixedU)
+        tr_rhoA_rhoB[idx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoB_fixedU)
+        tr_rhoA_2[idx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoA_fixedU)
+        tr_rhoB_2[idx] = _correlation_fixed_u(P_rhoB_fixedU, P_rhoB_fixedU)
 
     # normalisations
     tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB
@@ -461,7 +509,7 @@ def crossfidelity_fixed_u(
     return tr_rhoA_rhoB, tr_rhoA_2, tr_rhoB_2
 
 
-def correlation_fixed_u(P_1, P_2):
+def _correlation_fixed_u(P_1, P_2):
     """
     Carries out the inner loop calculation of the Cross-Fidelity. In
     contrast to the paper, arxiv:1909.01282, it makes sense for us to

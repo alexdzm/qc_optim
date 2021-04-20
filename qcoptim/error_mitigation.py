@@ -10,13 +10,10 @@ from scipy.optimize import curve_fit
 from qiskit import QiskitError
 from qiskit.circuit.library import CXGate
 
-from .cost import CostInterface, correlation_fixed_u
-from .utilities import (
-    bootstrap_resample,
-    add_random_measurements,
-    RandomMeasurementHandler,
-    bind_params,
-)
+from .cost import CostInterface
+from .cost.crossfidelity import _correlation_fixed_u
+ 
+from .utilities import bootstrap_resample, RandomMeasurementHandler
 
 
 class BaseCalibrator():
@@ -348,8 +345,8 @@ def estimate_purity_fixed_u(
                 + f'{prob_rho_fixed_u.keys()}'
             )
 
-        contributions_fixed_u[idx] = correlation_fixed_u(prob_rho_fixed_u,
-                                                         prob_rho_fixed_u)
+        contributions_fixed_u[idx] = _correlation_fixed_u(prob_rho_fixed_u,
+                                                          prob_rho_fixed_u)
 
     # normalisation
     contributions_fixed_u = (2**nb_qubits)*contributions_fixed_u
@@ -417,10 +414,6 @@ class PurityBoostCalibrator(BaseCalibrator):
         rand_meas_handler=None,
     ):
         """ """
-        self.ansatz = ansatz
-        self.instance = instance
-        self.num_random = num_random
-        self.seed = seed
         self.num_bootstraps = num_bootstraps
 
         if calibration_point is None:
@@ -446,10 +439,10 @@ class PurityBoostCalibrator(BaseCalibrator):
         # make internal RandomMeasurementHandler in none passed
         if rand_meas_handler is None:
             self._rand_meas_handler = RandomMeasurementHandler(
-                self.ansatz,
-                self.instance,
-                self.num_random,
-                seed=self.seed,
+                ansatz,
+                instance,
+                num_random,
+                seed=seed,
                 circ_name=circ_name,
             )
         else:
@@ -461,6 +454,22 @@ class PurityBoostCalibrator(BaseCalibrator):
     def make_calibration_circuits(self):
         """ """
         return []
+
+    @property
+    def num_random(self):
+        return self._rand_meas_handler.num_random
+
+    @property
+    def seed(self):
+        return self._rand_meas_handler.seed
+
+    @property
+    def ansatz(self):
+        return self._rand_meas_handler.ansatz
+
+    @property
+    def instance(self):
+        return self._rand_meas_handler.instance
 
     @property
     def calibration_circuits(self):
