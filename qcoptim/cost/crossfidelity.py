@@ -22,16 +22,6 @@ class CrossFidelity(CostInterface):
     """
     Cost class to implement offline CrossFidelity measurements between two
     quantum states (arxiv:1909.01282)
-
-    NOTE: when subsampling we would ideally keep track of the circs that were
-    submitted to the `execute` call and then extract those results elements
-    e.g. using a `_last_subsample_set` variable. But because of the way we use
-    the Cost obj for information sharing this might not always be possible. We
-    offer a fallback strategy of iterating over the full set of nb_random
-    circuits and try...except to see if they are in the Results obj. In this
-    case the _nb_random used in the statistics is determined dynamically. As a
-    weak check this approach fails if the number of results founds in the obj
-    is less than `self._subsample_size`.
     """
     def __init__(
         self,
@@ -40,7 +30,6 @@ class CrossFidelity(CostInterface):
         nb_random=5,
         seed=0,
         comparison_results=None,
-        subsample_size=None,
         prefixA='CrossFid',
         prefixB='CrossFid',
         rand_meas_handler=None,
@@ -65,11 +54,6 @@ class CrossFidelity(CostInterface):
             Seed used to generate random unitaries
         nb_random : int, optional
             The number of random unitaries to average over
-        subsample_size : int or None
-            If this is not None, then nb_random becomes the total number
-            of random measurement basis to generate and each time method
-            `bind_params_to_meas` is called it will randomly select this
-            number out of those total circuits to measure this time.
         prefix : string, optional
             String to use to label the measurement circuits generated
         """
@@ -95,14 +79,6 @@ class CrossFidelity(CostInterface):
 
         # run setter (see below)
         self.comparison_results = comparison_results
-
-        # setup subsampling
-        self._subsample_size = subsample_size
-        if subsample_size is not None:
-            # use same seed as generating random measurement basis for
-            # reproducibility
-            self._subsampling_rng = np.random.default_rng(seed)
-            self._last_subsample_set = None
 
         # related to last evaluation
         self.last_evaluation = None
@@ -193,14 +169,6 @@ class CrossFidelity(CostInterface):
         results : dict
             Results dictionary with the CrossFidelity metadata added
         """
-        # warn if using subsampling
-        if (
-            (self._subsample_size is not None)
-            and (not self._subsample_size == self.nb_random)
-        ):
-            print('Warning. Obj was using subsampling and so these results do'
-                  + ' not include all nb_random measurement settings.',
-                  file=sys.stderr)
 
         # convert results to dict if needed
         if not isinstance(results, dict):
@@ -245,27 +213,10 @@ class CrossFidelity(CostInterface):
                 'params_names passed has different lengh to params.'
             )
 
-        # (optionally) select the next subsample of measurement basis
-        if self._subsample_size is not None:
-            # (`replace` kwarg ensures there is no repeated choices)
-            self._last_subsample_set = self._subsampling_rng.choice(
-                self.nb_random, size=self._subsample_size, replace=False
-            )
-
         # get circuits from rand_meas_handler
         bound_circuits = []
         for point in params:
-            new_circs = self._rand_meas_handler.circuits(point)
-
-            # (optionally) subsample, `new_circs==[]` may result if the
-            # rand_meas_handler is shared with other objs
-            if (
-                self._subsample_size is not None
-                and new_circs != []
-            ):
-                new_circs = [new_circs[i] for i in self._last_subsample_set]
-
-            bound_circuits += new_circs
+            bound_circuits += self._rand_meas_handler.circuits(point)
 
         return bound_circuits
 
@@ -331,22 +282,6 @@ class CrossFidelity(CostInterface):
         # use `get_counts` method
         comparison_results = Result.from_dict(self._comparison_results)
 
-        # setup depending on whether we are subsampling
-        if self._subsample_size is not None:
-            nb_random = self._subsample_size
-            try:
-                # assumes this is being called directly after a call to
-                # `bind_params_to_meas`, which sets `self._last_subsample_set`,
-                # else the `results.get_counts` calls below will likely fail
-                unitaries_set = self._last_subsample_set
-            except AttributeError:
-                # see 'NOTE' in docstring above
-                nb_random = self.nb_random
-                unitaries_set = range(nb_random)
-        else:
-            nb_random = self.nb_random
-            unitaries_set = range(nb_random)
-
         # circuit naming functions
         def circ_namesA(idx):
             return name + self._rand_meas_handler.circ_name(idx)
@@ -356,7 +291,7 @@ class CrossFidelity(CostInterface):
         (dist_tr_rhoA_rhoB,
          dist_tr_rhoA_2,
          dist_tr_rhoB_2) = _crossfidelity_fixed_u(
-         results, comparison_results, unitaries_set=unitaries_set,
+         results, comparison_results, self.nb_random,
          circ_namesA=circ_namesA, circ_namesB=circ_namesB,
         )
 
@@ -403,8 +338,7 @@ class CrossFidelity(CostInterface):
 def _crossfidelity_fixed_u(
     resultsA,
     resultsB,
-    nb_random=None,
-    unitaries_set=None,
+    nb_random,
     circ_namesA=None,
     circ_namesB=None,
 ):
@@ -416,11 +350,7 @@ def _crossfidelity_fixed_u(
     ----------
     resultsA,resultsB : Qiskit results type
         Results to calculate cross-fidelity between
-    nb_random : (optional*) int
-    unitaries_set : (optional*) list of ints
-        One of these two args must be supplied, with nb_random taking
-        precedence. Used to locate relevant measurement results in the
-        qiksit result objs.
+    nb_random : int
     prefixA : (optional) str
     prefixB : (optional) str
         Prefixes for locating relevant results in qiskit result objs.
@@ -441,22 +371,11 @@ def _crossfidelity_fixed_u(
         def circ_namesB(idx):
             return 'CrossFid' + f'{idx}'
 
-    # parse nb_random/unitaries_set args
-    if (nb_random is None) and (unitaries_set is None):
-        raise ValueError(
-            'Please specify either the number of random unitaries'
-            + ' (`nb_random`), or the specific indexes of the random unitaries'
-            + ' to include (`unitaries_set`).')
-    if nb_random is not None:
-        unitaries_set = range(nb_random)
-    else:
-        nb_random = len(unitaries_set)
-
     # iterate over the different random unitaries
-    tr_rhoA_rhoB = np.zeros(len(unitaries_set))
-    tr_rhoA_2 = np.zeros(len(unitaries_set))
-    tr_rhoB_2 = np.zeros(len(unitaries_set))
-    for idx, uidx in enumerate(unitaries_set):
+    tr_rhoA_rhoB = np.zeros(nb_random)
+    tr_rhoA_2 = np.zeros(nb_random)
+    tr_rhoB_2 = np.zeros(nb_random)
+    for uidx in range(nb_random):
 
         # try to extract matching experiment data
         try:
@@ -497,9 +416,9 @@ def _crossfidelity_fixed_u(
                 + f'{P_rhoB_fixedU.keys()}'
             )
 
-        tr_rhoA_rhoB[idx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoB_fixedU)
-        tr_rhoA_2[idx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoA_fixedU)
-        tr_rhoB_2[idx] = _correlation_fixed_u(P_rhoB_fixedU, P_rhoB_fixedU)
+        tr_rhoA_rhoB[uidx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoB_fixedU)
+        tr_rhoA_2[uidx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoA_fixedU)
+        tr_rhoB_2[uidx] = _correlation_fixed_u(P_rhoB_fixedU, P_rhoB_fixedU)
 
     # normalisations
     tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB

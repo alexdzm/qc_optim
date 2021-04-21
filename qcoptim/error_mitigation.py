@@ -12,7 +12,7 @@ from qiskit.circuit.library import CXGate
 
 from .cost import CostInterface
 from .cost.crossfidelity import _correlation_fixed_u
- 
+
 from .utilities import bootstrap_resample, RandomMeasurementHandler
 
 
@@ -277,12 +277,7 @@ class CXMultiplierFitter(BaseFitter):
 #
 
 
-def estimate_purity_fixed_u(
-    results,
-    num_random=None,
-    unitaries_set=None,
-    names=str,
-):
+def estimate_purity_fixed_u(results, num_random, names=str):
     """
     Extract the contributions towards the evaluation of the purity of a quantum
     state using random single qubit measurements (arxiv:1909.01282), resolved
@@ -292,11 +287,7 @@ def estimate_purity_fixed_u(
     ----------
     results :  qiskit.result.Result obj
         Results to calculate cross-fidelity between
-    num_random : int, *optional*
-    unitaries_set : list of ints, *optional*
-        One of these two args must be supplied, with num_random taking
-        precedence. Used to locate relevant measurement results in the
-        qiksit result objs.
+    num_random : int
     names : Callable, optional
         Function that maps index of a random circuit to a name of a circuit in
         the qiskit results object
@@ -309,19 +300,9 @@ def estimate_purity_fixed_u(
     """
     nb_qubits = None
 
-    # parse num_random/unitaries_set args
-    if (num_random is None) and (unitaries_set is None):
-        raise ValueError('Please specify either the number of random unitaries'
-              + ' (`num_random`), or the specific indexes of the random'
-              + ' unitaries to include (`unitaries_set`).')
-    if num_random is not None:
-        unitaries_set = range(num_random)
-    else:
-        num_random = len(unitaries_set)
-
     # iterate over the different random unitaries
-    contributions_fixed_u = np.zeros(len(unitaries_set))
-    for idx, uidx in enumerate(unitaries_set):
+    contributions_fixed_u = np.zeros(num_random)
+    for uidx in range(num_random):
 
         # try to extract matching experiment data
         try:
@@ -345,8 +326,8 @@ def estimate_purity_fixed_u(
                 + f'{prob_rho_fixed_u.keys()}'
             )
 
-        contributions_fixed_u[idx] = _correlation_fixed_u(prob_rho_fixed_u,
-                                                          prob_rho_fixed_u)
+        contributions_fixed_u[uidx] = _correlation_fixed_u(prob_rho_fixed_u,
+                                                           prob_rho_fixed_u)
 
     # normalisation
     contributions_fixed_u = (2**nb_qubits)*contributions_fixed_u
@@ -356,8 +337,7 @@ def estimate_purity_fixed_u(
 
 def purity_from_random_measurements(
     results,
-    num_random=None,
-    unitaries_set=None,
+    num_random,
     names=str,
     num_bootstraps=1000,
 ):
@@ -370,11 +350,7 @@ def purity_from_random_measurements(
     ----------
     results :  qiskit.result.Result obj
         Results to calculate cross-fidelity between
-    num_random : int, *optional*
-    unitaries_set : list of ints, *optional*
-        One of these two args must be supplied, with num_random taking
-        precedence. Used to locate relevant measurement results in the
-        qiksit result objs.
+    num_random : int.
     names : Callable, optional
         Function that maps index of a random circuit to a name of a circuit in
         the qiskit results object
@@ -387,10 +363,7 @@ def purity_from_random_measurements(
     tr_rho_2_err : float
     """
     contributions_fixed_u = estimate_purity_fixed_u(
-        results,
-        num_random=num_random,
-        unitaries_set=unitaries_set,
-        names=names,
+        results, num_random, names=names,
     )
 
     # bootstrap estimate and standard deviation
@@ -495,9 +468,7 @@ class PurityBoostCalibrator(BaseCalibrator):
             _circ_name = self._rand_meas_handler._circ_name
 
         contributions_fixed_u = estimate_purity_fixed_u(
-            results,
-            num_random=self.num_random,
-            names=_circ_name,
+            results, self.num_random, names=_circ_name,
         )
 
         def compute_ptot(data, axis=0):
