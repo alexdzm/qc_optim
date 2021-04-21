@@ -400,6 +400,10 @@ class PurityBoostCalibrator(BaseCalibrator):
         else:
             self.calibration_point = calibration_point
 
+        # this is to match others users of RandomMeasurementHandler,
+        # e.g. CrossFidelity class, which assume 2d parameter points
+        self.calibration_point = np.atleast_2d(self.calibration_point)
+
         # have not yet estimated ptot
         self.ptot = None
         self.ptot_std = None

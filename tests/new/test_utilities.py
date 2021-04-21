@@ -66,3 +66,30 @@ def test_random_measurement_handler_trivial_ansatz():
     circs = rand_meas_handler.circuits([])
     assert len(circs) == num_random
     assert rand_meas_handler.circuits([]) == []
+
+
+def test_random_measurement_handler_2d_point():
+    """
+    Test correct behaviour with array of points
+    """
+    num_random = 10
+    num_points = 3
+    seed = 0
+
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    ansatz = RandomAnsatz(2, 2)
+    rand_meas_handler = RandomMeasurementHandler(
+        ansatz, instance, num_random, seed=seed,
+    )
+
+    points = np.random.random(num_points*ansatz.nb_params)
+    points = points.reshape((num_points, ansatz.nb_params))
+    circs = rand_meas_handler.circuits(points)
+    assert len(circs) == num_random*num_points
+    assert rand_meas_handler.circuits(points) == []
+
+    # change one of points, should unlock
+    points[0, :] = 0.
+    circs = rand_meas_handler.circuits(points)
+    assert len(circs) == num_random*num_points
+    assert rand_meas_handler.circuits(points) == []

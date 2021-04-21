@@ -214,11 +214,7 @@ class CrossFidelity(CostInterface):
             )
 
         # get circuits from rand_meas_handler
-        bound_circuits = []
-        for point in params:
-            bound_circuits += self._rand_meas_handler.circuits(point)
-
-        return bound_circuits
+        return self._rand_meas_handler.circuits(params)
 
     def evaluate_cost(
         self,

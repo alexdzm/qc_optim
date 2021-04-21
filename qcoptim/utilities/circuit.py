@@ -126,7 +126,7 @@ class RandomMeasurementHandler():
         for idx, circ in enumerate(self._meas_circuits):
             circ.name = self._circ_name(idx)
 
-    def circuits(self, point):
+    def circuits(self, evaluate_at):
         """
         Yield circuits
         """
@@ -137,18 +137,30 @@ class RandomMeasurementHandler():
                 return self._meas_circuits
             return []
 
-        if not isinstance(point, np.ndarray):
-            raise TypeError("point passed to RandomMeasurementHandler as type "
-                            + f'{type(point)}')
+        if not isinstance(evaluate_at, np.ndarray):
+            raise TypeError("evaluate_at passed has type "
+                            + f'{type(evaluate_at)}')
+
+        if evaluate_at.ndim > 2:
+            raise ValueError('evaluate_at has too many dimensions.')
 
         if (
             self._last_point is not None
-            and np.all(np.isclose(self._last_point, point))
+            and np.all(np.isclose(self._last_point, evaluate_at))
         ):
             return []
 
-        self._last_point = point
-        return bind_params(self._meas_circuits, point, self.ansatz.params)
+        self._last_point = evaluate_at.copy()
+
+        if evaluate_at.ndim == 2:
+            circs = []
+            for point in evaluate_at:
+                circs += bind_params(self._meas_circuits, point,
+                                     self.ansatz.params)
+            return circs
+
+        return bind_params(self._meas_circuits, evaluate_at,
+                           self.ansatz.params)
 
     def reset(self):
         """

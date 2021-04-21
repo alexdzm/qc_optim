@@ -98,7 +98,7 @@ def test_cx_multiplier_fitter(extrapolation_strategy):
     assert mean + 4*err > target_value
 
 
-def test_purity_cost_calibrator():
+def test_purity_boost_calibrator():
     """ """
     num_bootstraps = 1000
     num_random = 100
@@ -134,7 +134,7 @@ def test_purity_cost_calibrator():
     assert calibrator.calibration_circuits == []
 
 
-def test_purity_cost_calibrator_shared_rand_meas_handler():
+def test_purity_boost_calibrator_shared_rand_meas_handler():
     """ """
     num_random = 500
     seed = 0
