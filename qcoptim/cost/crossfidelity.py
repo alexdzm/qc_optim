@@ -21,7 +21,7 @@ from .core import CostInterface
 class CrossFidelity(CostInterface):
     """
     Cost class to implement offline CrossFidelity measurements between two
-    quantum states (arxiv:1909.01282)
+    quantum states (arxiv:1909.01282).
     """
     def __init__(
         self,
@@ -41,7 +41,11 @@ class CrossFidelity(CostInterface):
             The ansatz object that this cost can be optimsed over
         instance : qiskit quantum instance
             Will be used to generate internal transpiled circuits
-        comparison_results : {dict, None}
+        nb_random : int, optional
+            The number of random unitaries to average over
+        seed : int, optional
+            Seed used to generate random unitaries
+        comparison_results : {dict, None, qiskit.results.Result}
             The use cases where None would be passed is if we are using
             this object to generate the comparison_results object for a
             future instance of CrossFidelity. This robustly ensures that
@@ -50,12 +54,19 @@ class CrossFidelity(CostInterface):
             has been converted to a dict using its `to_dict` method.
             Ideally this would have been tagged with CrossFidelity
             metadata using this classes `tag_results_metadata` method.
-        seed : int, optional
-            Seed used to generate random unitaries
-        nb_random : int, optional
-            The number of random unitaries to average over
-        prefix : string, optional
-            String to use to label the measurement circuits generated
+            Can also accept a qiskit results obj
+        prefixA : str, optional
+            Prefix string to use on circuits generate to characterise A system.
+        prefixB : str, optional
+            Prefix string to use to extract system B's results from 
+            comparison_results.
+        rand_meas_handler : None, optional
+            Can pass an already initialised RandomMeasurementHandler obj to use
+            to generate random basis circuits internally. This can be shared
+            with other users to avoid repeated random characterisation of the
+            same state.
+            Will raise ValueError if rand_meas_handler's ansatz or instance are
+            different from the args, unless `ansatz=None` and `instance=None`.
         """
 
         if not isinstance(nb_random, int) and (nb_random > 0):
@@ -75,6 +86,12 @@ class CrossFidelity(CostInterface):
                 circ_name=circ_name,
             )
         else:
+            if ansatz is not None and ansatz != rand_meas_handler.ansatz:
+                raise ValueError('Ansatz passed different from'
+                                 + ' rand_meas_handler obj.')
+            if instance is not None and instance != rand_meas_handler.instance:
+                raise ValueError('Quantum instance passed different from'
+                                 + ' rand_meas_handler obj.')
             self._rand_meas_handler = rand_meas_handler
 
         # run setter (see below)
@@ -106,7 +123,7 @@ class CrossFidelity(CostInterface):
     @comparison_results.setter
     def comparison_results(self, results):
         """
-        setter for comparison_results, perform validations
+        Setter for comparison_results, perform validations
         """
         # check if comparison_results contains the crossfidelity_metadata
         # tags and if it does compare them, if these comparisons fail then
@@ -161,7 +178,7 @@ class CrossFidelity(CostInterface):
 
         Parameters
         ----------
-        results : Qiskit results type, or dict
+        results : qiskit.result.Result, dict
             The results data to process
 
         Returns
@@ -185,20 +202,19 @@ class CrossFidelity(CostInterface):
 
     def bind_params_to_meas(self, params=None, params_names=None):
         """
-        Bind a list of parameters to named measurable circuits of the
-        cost function
+        Return measurement circuits bound at `params`
 
         Parameters
         ----------
-        params: None, or 1d, 2d numpy array
-            If None the function will return the unbound measurement
-            circuit, else it will bind each parameter to each of the
-            measurable circuits
+        params : numpy.ndarray, optional
+            Point (1d) or points (2d) to bind circuits at
+        params_names : None, optional
+            Description
 
         Returns
         -------
-            quantum circuits
-                The bound or unbound named measurement circuits
+        list[qiskit.QuantumCircuit]
+            Evaluation circuits
         """
         if params is None:
             raise ValueError('Bound circuits requested without params given.')
@@ -229,13 +245,17 @@ class CrossFidelity(CostInterface):
 
         Parameters
         ----------
-        results : Qiskit results type
+        results : qiskit.result.Result
             Results to calculate cross-fidelity with, against the stored
             results dictionary.
+        name : str, optional
+            Prefix on results names to find results data
+        **kwargs
+            Description
 
         Returns
         -------
-        cross_fidelity : float
+        float
             Evaluated cross-fidelity
         """
         return self.evaluate_cost_and_std(results, name=name, **kwargs)[0]
@@ -256,12 +276,16 @@ class CrossFidelity(CostInterface):
         results : Qiskit results type
             Results to calculate cross-fidelity with, against the stored
             results dictionary.
+        name : str, optional
+            Prefix on results names to find results data
+        **kwargs
+            Description
 
         Returns
         -------
-        cross_fidelity : float
+        float
             Evaluated cross-fidelity
-        cross_fidelity_std : float
+        float
             Standard error on cross-fidelity estimation, obtained from
             bootstrap resampling
         """
@@ -344,18 +368,25 @@ def _crossfidelity_fixed_u(
 
     Parameters
     ----------
-    resultsA,resultsB : Qiskit results type
-        Results to calculate cross-fidelity between
+    resultsA : qiskit.result.Result
+        Results for system A
+    resultsB : qiskit.result.Result
+        Results for system B
     nb_random : int
-    prefixA : (optional) str
-    prefixB : (optional) str
-        Prefixes for locating relevant results in qiskit result objs.
-
-    Returns
-    -------
-    tr_rhoA_rhoB : float
-    tr_rhoA_2 : float
-    tr_rhoB_2 : float
+        Number of random measurement basis
+    circ_namesA : callable, optional
+        Naming function for A results, `int -> str`
+    circ_namesB : callable, optional
+        Naming function for B results, `int -> str`
+    
+    No Longer Returned
+    ------------------
+    float
+        tr_rhoA_rhoB, unnormalised cross-fidelity
+    float
+        tr_rhoA_2, purity for system A
+    float
+        tr_rhoB_2, purity for system B
     """
     nb_qubits = None
 

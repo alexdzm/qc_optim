@@ -17,17 +17,18 @@ def bind_params(circ, param_values, param_variables, param_name=None):
 
     Parameters
     ----------
-    circ : single or list of quantum circuits with the same qk_vars
-    params_values: a 1d array of parameters (i.e. correspond to a single
+    circ : qiskit circtuit(s)
+        Single or list of quantum circuits with the same qk_vars
+    param_values : a 1d array of parameters (i.e. correspond to a single
         set of parameters)
-    param_variables: list of qk_vars, it should match element-wise
+    param_variables : list of qk_vars, it should match element-wise
         to the param_values
-    param_name: str if not None it will used to prepend the names
+    param_name : str if not None it will used to prepend the names
         of the circuits created
 
     Returns
     -------
-        quantum circuits
+    bound quantum circuits
     """
     if not isinstance(circ, list):
         circ = [circ]
@@ -49,6 +50,7 @@ def add_random_measurements(circuit, num_rand, seed=None):
     Parameters
     ----------
     circuit : qiskit circuit
+        Circuit to add random measurements to
     num_rand : int
         Number of random unitaries to use
     seed : int, optional
@@ -57,7 +59,7 @@ def add_random_measurements(circuit, num_rand, seed=None):
     Returns
     -------
     purity_circuits : list of qiskit circuits
-        Copies of input circuit(s), with random unitaries added to the end
+        Copies of input circuit, with random unitaries added to the end
     """
     rand_state = np.random.default_rng(seed)
 
@@ -82,7 +84,9 @@ class RandomMeasurementHandler():
     Several tasks (e.g. measuring cross-fidelity, purity boosting error
     mitigation) require measuring all of the active qubits in Haar random
     basis. If we want to do some of these things simulataneously we risk
-    submitting copies of the same circuits.
+    submitting copies of the same circuits. This class encapsulates the task of
+    generating the circuits needed and locks on consecutive requests for the
+    same set of circuits, making it possible to avoid this problem.
     """
     def __init__(
         self,
@@ -93,6 +97,20 @@ class RandomMeasurementHandler():
         circ_name=None,
     ):
         """
+        Parameters
+        ----------
+        ansatz : class implementing ansatz interface
+            Ansatz obj
+        instance : qiskit.aqua.QuantumInstance
+            Quantum instance to use
+        num_random : int
+            Number of random basis to generate
+        seed : int, optional
+            Seed for generating random basis
+        circ_name : callable, optional
+            Function used to name circuits, should have signature `int -> str`
+            and preferably should prefix the int, e.g. return something like
+            'some-str'+str(int)`
         """
         self.ansatz = ansatz
         self.instance = instance
@@ -116,19 +134,45 @@ class RandomMeasurementHandler():
 
     @property
     def circ_name(self):
-        """ """
+        """
+        Returns
+        -------
+        callable
+            Obj's circuit naming function, maps `int -> str`
+        """
         return self._circ_name
 
     @circ_name.setter
     def circ_name(self, circ_name):
-        """ """
+        """
+        Setter for circuit naming function. If the function is changed during
+        use we want to rename all of the obj's stored circuits.
+
+        Parameters
+        ----------
+        circ_name : callable
+            New function for circuit naming should  act as `int -> str`
+        """
         self._circ_name = circ_name
         for idx, circ in enumerate(self._meas_circuits):
             circ.name = self._circ_name(idx)
 
     def circuits(self, evaluate_at):
         """
-        Yield circuits
+        Yield circuits, if multiple consecutive requests are made for the
+        circuits at the same point only the first call will return the
+        circuits, after that [] is returned each time. This lock releases if a
+        new point(s) is requested.
+
+        Parameters
+        ----------
+        evaluate_at : numpy.ndarray
+            Point (1d) or points (2d) to bind circuits at
+
+        Returns
+        -------
+        qiskit.QuantumCircuit
+            Transpiled quantum circuits
         """
         # special case, circuit has no parameters to bind
         if self.ansatz.nb_params == 0:
