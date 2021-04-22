@@ -21,9 +21,10 @@ setup(
         'numpy',
         'GPyOpt',
         'qiskit',
+        'quimb',
+        'qutip',
+        'openfermion',
     ],
-    extras_require={'regroup pauli operators in some cost functions': 'openfermion',
-                    'decompose projectors into pauli strings': 'qutip'
-    },
+    extras_require={},
     project_urls={},
 )

@@ -15,6 +15,10 @@ def bind_params(circ, param_values, param_variables, param_name=None):
     passed according to the param_variables Returns the list of circuits with
     bound values DOES NOT MODIFY INPUT (i.e. hardware details??)
 
+    As of (at least) qiskit 0.25.2 circuits are renamed (with a suffix) when
+    parameters are bound. This breaks some of our code so we remove that suffix
+    here.
+
     Parameters
     ----------
     circ : qiskit circtuit(s)
@@ -33,10 +37,19 @@ def bind_params(circ, param_values, param_variables, param_name=None):
     if not isinstance(circ, list):
         circ = [circ]
 
+    # bind circuits but preserve names
+    bound_circ = []
     val_dict = dict(zip(param_variables, param_values))
-    bound_circ = [cc.bind_parameters(val_dict) for cc in circ]
+    for cc in circ:
+        circ_name = cc.name
+        tmp = cc.bind_parameters(val_dict)
+        tmp.name = circ_name
+        bound_circ.append(tmp)
+
+    # (optionally) add prefix to circuit names
     if param_name is not None:
         bound_circ = prefix_to_names(bound_circ, param_name)
+
     return bound_circ
 
 
