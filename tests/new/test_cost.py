@@ -94,6 +94,52 @@ def test_cross_fidelity():
         # assert mean + 4*std > target
 
 
+def test_cross_fidelity_subsampling_rand_meas_handler():
+    """ """
+    num_random = 10
+    seed = 0
+
+    def circ_name(idx):
+        return 'test_circ'+f'{idx}'
+
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    ansatz = RandomAnsatz(2, 2)
+    rand_meas_handler = RandomMeasurementHandler(
+        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+    )
+
+    # get one-side of the data
+    init_crossfid = CrossFidelity(
+        ansatz,
+        instance,
+        rand_meas_handler=rand_meas_handler,
+    )
+    point = np.random.random(ansatz.nb_params)
+    circs = init_crossfid.bind_params_to_meas(point)
+    assert len(circs) == num_random
+    results = instance.execute(circs)
+    comparison_results = init_crossfid.tag_results_metadata(results)
+
+    # make subsampled obj
+    crossfid = CrossFidelity(
+        ansatz,
+        instance,
+        nb_random=num_random//2,
+        rand_meas_handler=rand_meas_handler,
+        comparison_results=comparison_results,
+        prefixB=circ_name(''),
+    )
+
+    # check full number of circuits yielded
+    point = np.random.random(ansatz.nb_params)
+    circs = crossfid.bind_params_to_meas(point)
+    assert len(circs) == num_random
+
+    # check that only need first half to evaluate crossfid
+    results = instance.execute(circs[:num_random//2])
+    _, _ = crossfid.evaluate_cost_and_std(results)
+
+
 def test_cross_fidelity_shared_rand_meas_handler():
     """ """
     num_random = 10

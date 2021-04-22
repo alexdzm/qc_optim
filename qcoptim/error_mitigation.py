@@ -82,10 +82,12 @@ class BaseFitter(CostInterface):
         # for saving last evaluation
         self.last_evaluation = None
 
+
 #
 # Zero-noise extrapolation
 # ------------------------
 #
+
 
 def multiply_cx(circuit, multiplier):
     """
@@ -482,7 +484,7 @@ class PurityBoostCalibrator(BaseCalibrator):
         self,
         ansatz,
         instance,
-        num_random=500,
+        num_random=None,
         seed=None,
         num_bootstraps=1000,
         calibration_point=None,
@@ -513,10 +515,21 @@ class PurityBoostCalibrator(BaseCalibrator):
             to generate random basis circuits internally. This can be shared
             with other users to avoid repeated random characterisation of the
             same state.
+
             Will raise ValueError if rand_meas_handler's ansatz or instance are
             different from the args, unless `ansatz=None` and `instance=None`.
+
+            `rand_meas_handler.num_random` can be different from num_random as
+            long as num_random is smaller.
         """
         self.num_bootstraps = num_bootstraps
+
+        # set default for num_random if passed as None
+        if num_random is None:
+            if rand_meas_handler is None:
+                num_random = 500
+            else:
+                num_random = rand_meas_handler.num_random
 
         if calibration_point is None:
             # random vector with elements in [0,2\pi]
@@ -558,7 +571,11 @@ class PurityBoostCalibrator(BaseCalibrator):
             if instance is not None and instance != rand_meas_handler.instance:
                 raise ValueError('Quantum instance passed different from'
                                  + ' rand_meas_handler obj.')
+            if num_random > rand_meas_handler.num_random:
+                raise ValueError('num_random larger than num_random of'
+                                 + ' rand_meas_handler obj.')
             self._rand_meas_handler = rand_meas_handler
+        self.num_random = num_random
 
         # call base calibration init
         BaseCalibrator.__init__(self)
@@ -568,10 +585,6 @@ class PurityBoostCalibrator(BaseCalibrator):
         Generating circuits defered to a RandomMeasurementHandler in this class
         """
         return []
-
-    @property
-    def num_random(self):
-        return self._rand_meas_handler.num_random
 
     @property
     def seed(self):

@@ -134,6 +134,36 @@ def test_purity_boost_calibrator():
     assert calibrator.calibration_circuits == []
 
 
+def test_purity_boost_calibrator_subsampled_rand_meas_handler():
+    """ """
+    num_random = 10
+    seed = 0
+
+    def circ_name(idx):
+        return 'test_circ'+f'{idx}'
+
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    ansatz = RandomAnsatz(2, 2)
+    rand_meas_handler = RandomMeasurementHandler(
+        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+    )
+
+    calibration_point = np.ones(ansatz.nb_params)
+    calibrator = PurityBoostCalibrator(
+        ansatz, instance, num_random=num_random//2,
+        rand_meas_handler=rand_meas_handler,
+        calibration_point=calibration_point,
+    )
+
+    # check full number of circuits yielded
+    circs = calibrator.calibration_circuits
+    assert len(circs) == num_random
+
+    # check that only need first half to evaluate crossfid
+    results = instance.execute(circs[:num_random//2])
+    calibrator.process_calibration_results(results)
+
+
 def test_purity_boost_calibrator_shared_rand_meas_handler():
     """ """
     num_random = 500

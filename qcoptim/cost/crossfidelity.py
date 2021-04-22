@@ -27,8 +27,8 @@ class CrossFidelity(CostInterface):
         self,
         ansatz,
         instance,
-        nb_random=5,
-        seed=0,
+        nb_random=None,
+        seed=None,
         comparison_results=None,
         prefixA='CrossFid',
         prefixB='CrossFid',
@@ -58,21 +58,30 @@ class CrossFidelity(CostInterface):
         prefixA : str, optional
             Prefix string to use on circuits generate to characterise A system.
         prefixB : str, optional
-            Prefix string to use to extract system B's results from 
+            Prefix string to use to extract system B's results from
             comparison_results.
         rand_meas_handler : None, optional
             Can pass an already initialised RandomMeasurementHandler obj to use
             to generate random basis circuits internally. This can be shared
             with other users to avoid repeated random characterisation of the
             same state.
+
             Will raise ValueError if rand_meas_handler's ansatz or instance are
             different from the args, unless `ansatz=None` and `instance=None`.
+
+            `rand_meas_handler.num_random` can be different from nb_random as
+            long as nb_random is smaller.
         """
-
-        if not isinstance(nb_random, int) and (nb_random > 0):
-            raise ValueError('nb_random is invalid.')
-
         self._prefixB = prefixB
+
+        # set default for nb_random if passed as None
+        if nb_random is None:
+            if rand_meas_handler is None:
+                nb_random = 5
+            else:
+                nb_random = rand_meas_handler.num_random
+        elif (not isinstance(nb_random, int)) or (nb_random < 1):
+            raise ValueError('nb_random is invalid.')
 
         # make internal RandomMeasurementHandler in none passed
         def circ_name(idx):
@@ -92,17 +101,17 @@ class CrossFidelity(CostInterface):
             if instance is not None and instance != rand_meas_handler.instance:
                 raise ValueError('Quantum instance passed different from'
                                  + ' rand_meas_handler obj.')
+            if nb_random > rand_meas_handler.num_random:
+                raise ValueError('nb_random larger than num_random of'
+                                 + ' rand_meas_handler obj.')
             self._rand_meas_handler = rand_meas_handler
+        self.nb_random = nb_random
 
         # run setter (see below)
         self.comparison_results = comparison_results
 
         # related to last evaluation
         self.last_evaluation = None
-
-    @property
-    def nb_random(self):
-        return self._rand_meas_handler.num_random
 
     @property
     def seed(self):
@@ -378,9 +387,9 @@ def _crossfidelity_fixed_u(
         Naming function for A results, `int -> str`
     circ_namesB : callable, optional
         Naming function for B results, `int -> str`
-    
-    No Longer Returned
-    ------------------
+
+    Returns
+    -------
     float
         tr_rhoA_rhoB, unnormalised cross-fidelity
     float
@@ -472,9 +481,9 @@ def _correlation_fixed_u(P_1, P_2):
     P_2 : dict (normalised counts dictionary)
         Same for qubit 2.
 
-    Return
-    ------
-    correlation_fixed_u : float
+    Returns
+    -------
+    float
         Evaluation of the inner sum of the cross-fidelity
     """
     # iterate over the elements of the computational basis (that
