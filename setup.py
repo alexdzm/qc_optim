@@ -24,6 +24,7 @@ setup(
         'quimb',
         'qutip',
         'openfermion',
+        'pyscf',
     ],
     extras_require={},
     project_urls={},
