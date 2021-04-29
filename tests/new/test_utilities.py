@@ -11,6 +11,11 @@ from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
 from qcoptim.utilities import (
     RandomMeasurementHandler,
 )
+from qcoptim.utilities.pytket import compile_for_backend
+
+
+def test_pytket_compile_for_backend():
+    """  """
 
 
 def test_random_measurement_handler():
