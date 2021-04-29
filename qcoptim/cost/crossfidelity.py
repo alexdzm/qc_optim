@@ -427,12 +427,14 @@ def _crossfidelity_fixed_u(
                              + ' calculate cross-fidelity.') from missing_exp
 
         # normalise counts dict to give empirical probability dists
+        num_measurements_A = sum(countsdict_rhoA_fixedU.values())
         P_rhoA_fixedU = {
-            k: v/sum(countsdict_rhoA_fixedU.values())
+            k: v/num_measurements_A
             for k, v in countsdict_rhoA_fixedU.items()
         }
+        num_measurements_B = sum(countsdict_rhoB_fixedU.values())
         P_rhoB_fixedU = {
-            k: v/sum(countsdict_rhoB_fixedU.values())
+            k: v/num_measurements_B
             for k, v in countsdict_rhoB_fixedU.items()
         }
 
@@ -452,9 +454,12 @@ def _crossfidelity_fixed_u(
                 + f'{P_rhoB_fixedU.keys()}'
             )
 
-        tr_rhoA_rhoB[uidx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoB_fixedU)
-        tr_rhoA_2[uidx] = _correlation_fixed_u(P_rhoA_fixedU, P_rhoA_fixedU)
-        tr_rhoB_2[uidx] = _correlation_fixed_u(P_rhoB_fixedU, P_rhoB_fixedU)
+        tr_rhoA_rhoB[uidx] = _cross_correlation_fixed_u(
+            P_rhoA_fixedU, P_rhoB_fixedU)
+        tr_rhoA_2[uidx] = _auto_cross_correlation_fixed_u(
+            P_rhoA_fixedU, num_measurements_A)
+        tr_rhoB_2[uidx] = _auto_cross_correlation_fixed_u(
+            P_rhoB_fixedU, num_measurements_B)
 
     # normalisations
     tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB
@@ -464,7 +469,7 @@ def _crossfidelity_fixed_u(
     return tr_rhoA_rhoB, tr_rhoA_2, tr_rhoB_2
 
 
-def _correlation_fixed_u(P_1, P_2):
+def _cross_correlation_fixed_u(P_1, P_2):
     """
     Carries out the inner loop calculation of the Cross-Fidelity. In
     contrast to the paper, arxiv:1909.01282, it makes sense for us to
@@ -499,5 +504,51 @@ def _correlation_fixed_u(P_1, P_2):
             corr_fixed_u += (
                 (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
             )
+
+    return corr_fixed_u
+
+
+def _auto_cross_correlation_fixed_u(P_1, num_measurements):
+    """
+    Carries out the inner loop purity calculation of arxiv:1909.01282 and
+    arxiv:1801.00999, etc. In contrast to the two-source calculation above
+    (_cross_correlation_fixed_u), in this case there is only one measured
+    distribution of bit string probabilities so we need to take additional care
+    to avoid estimator bias when computing cross-correlations.
+
+    Parameters
+    ----------
+    P_1 : dict (normalised counts dictionary)
+        The empirical distribution for the measurments on qubit 1
+        P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
+        where U is a fixed, randomly chosen unitary, and s_A is all possible
+        binary strings in the computational basis
+
+    Returns
+    -------
+    float
+        Evaluation of the inner sum of the cross-fidelity
+    """
+    # iterate over the elements of the computational basis (that
+    # appear in the measurement results)sublimes
+    corr_fixed_u = 0
+    for sA, P_1_sA in P_1.items():
+        for sAprime, P_1_sAprime in P_1.items():
+            if sA == sAprime:
+                # bias corrected
+                corr_fixed_u += (
+                    P_1_sA * (num_measurements*P_1_sA - 1)
+                    / (num_measurements - 1)
+                )
+            else:
+                hamming_distance = int(
+                    len(sA)*sp.spatial.distance.hamming(list(sA),
+                                                        list(sAprime))
+                )
+                # bias corrected
+                corr_fixed_u += (
+                    (-2)**(-hamming_distance) * P_1_sA*P_1_sAprime
+                    * num_measurements / (num_measurements - 1)
+                )
 
     return corr_fixed_u

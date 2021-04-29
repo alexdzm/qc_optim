@@ -11,7 +11,7 @@ from qiskit import QiskitError
 from qiskit.circuit.library import CXGate
 
 from .cost import CostInterface
-from .cost.crossfidelity import _correlation_fixed_u
+from .cost.crossfidelity import _auto_cross_correlation_fixed_u
 
 from .utilities import bootstrap_resample, RandomMeasurementHandler
 
@@ -155,7 +155,7 @@ def richardson_extrapolation(stretch_factors, cost_series,
         Variance in zero-noise extrapolation (None if `cost_series_vars` not
         supplied)
     """
-    betas = -1*np.ones(len(cost_series))
+    betas = np.ones(len(cost_series))
     for idx1, alpha1 in enumerate(stretch_factors):
         for idx2, alpha2 in enumerate(stretch_factors):
             if not idx1 == idx2:
@@ -166,8 +166,13 @@ def richardson_extrapolation(stretch_factors, cost_series,
         sum([b*a**idx for (a, b) in zip(stretch_factors, betas)])
         for idx, _ in enumerate(stretch_factors)
     ]
-    assert np.isclose(test_array[0], 1.)
-    assert np.all(np.isclose(test_array[1:], np.zeros(len(test_array)-1)))
+    if not (
+        np.all(np.isclose(test_array[1:], np.zeros(len(test_array)-1)))
+        or np.isclose(np.abs(test_array[0]), 1.)
+    ):
+        raise ValueError('Problem with Richardson coefficiants.')
+    if test_array[0] < 0:
+        betas = -1*betas
 
     # get std_err if possible
     std_err = None
@@ -414,7 +419,8 @@ def estimate_purity_fixed_u(results, num_random, names=str):
                            + ' calculate purity.') from missing_experiments
 
         # normalise counts dict to give empirical probability dists
-        prob_rho_fixed_u = {k: v/sum(countsdict_rho_fixed_u.values())
+        num_measurements = sum(countsdict_rho_fixed_u.values())
+        prob_rho_fixed_u = {k: v/num_measurements
                             for k, v in countsdict_rho_fixed_u.items()}
 
         # use this to check number of qubits has been consistent
@@ -428,8 +434,8 @@ def estimate_purity_fixed_u(results, num_random, names=str):
                 + f'{prob_rho_fixed_u.keys()}'
             )
 
-        contributions_fixed_u[uidx] = _correlation_fixed_u(prob_rho_fixed_u,
-                                                           prob_rho_fixed_u)
+        contributions_fixed_u[uidx] = _auto_cross_correlation_fixed_u(
+            prob_rho_fixed_u, num_measurements)
 
     # normalisation
     contributions_fixed_u = (2**nb_qubits)*contributions_fixed_u
@@ -626,7 +632,7 @@ class PurityBoostCalibrator(BaseCalibrator):
             def _circ_name(idx):
                 return name + self._rand_meas_handler.circ_name(idx)
         else:
-            _circ_name = self._rand_meas_handler._circ_name
+            _circ_name = self._rand_meas_handler.circ_name
 
         contributions_fixed_u = estimate_purity_fixed_u(
             results, self.num_random, names=_circ_name,
@@ -755,6 +761,7 @@ class PurityBoostFitter(BaseFitter):
         self,
         results,
         name='',
+        calibration_name=None,
         **kwargs,
     ):
         """
@@ -774,6 +781,9 @@ class PurityBoostFitter(BaseFitter):
         float
             Standard deviation in estimate
         """
+        if calibration_name is None:
+            calibration_name = name
+
         std_func = getattr(self.cost, "evaluate_cost_and_std", None)
         if callable(std_func):
             raw_cost, raw_std = std_func(results, name=name, **kwargs)
@@ -782,7 +792,8 @@ class PurityBoostFitter(BaseFitter):
             raw_cost = self.cost.evaluate_cost(results, name=name, **kwargs)
 
         if not self.calibrator.calibrated:
-            self.calibrator.process_calibration_results(results, name=name)
+            self.calibrator.process_calibration_results(
+                results, name=calibration_name)
 
         mean = raw_cost / (1 - self.calibrator.ptot)
         var = (
@@ -799,6 +810,8 @@ class PurityBoostFitter(BaseFitter):
             'raw_std': raw_std,
             'pboost_mean': mean,
             'pboost_std': np.sqrt(var),
+            'ptot': self.calibrator.ptot,
+            'ptot_std': self.calibrator.ptot_std,
         }
 
         return mean, np.sqrt(var)
@@ -807,6 +820,7 @@ class PurityBoostFitter(BaseFitter):
         self,
         results,
         name='',
+        calibration_name=None,
         **kwargs,
     ):
         """
@@ -824,4 +838,6 @@ class PurityBoostFitter(BaseFitter):
         float
             Purity boosted mean estimate
         """
-        return self.evaluate_cost_and_std(results, name=name, **kwargs)[0]
+        return self.evaluate_cost_and_std(
+            results, name=name, calibration_name=calibration_name, **kwargs
+        )[0]
