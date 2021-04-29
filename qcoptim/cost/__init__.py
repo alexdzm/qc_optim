@@ -30,9 +30,8 @@ from .core import (
     append_measurements,
     gen_meas_circuits,
     bind_params,
-    CostWPO,
-    CostWPOquimb,
 )
+from .wpo import CostWPO, CostWPOquimb
 from .crossfidelity import CrossFidelity
 
 # list of * contents
@@ -57,5 +56,6 @@ __all__ = [
     'get_substring',
     'bind_params',
     'CostWPO',
+    'CostWPOquimb',
     'CrossFidelity',
 ]

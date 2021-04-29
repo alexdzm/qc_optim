@@ -29,16 +29,10 @@ scope of the classes here
 
 import abc
 import pdb
-import sys
 import copy
 
 import numpy as np
-import quimb as qu
-
 import qiskit as qk
-# these Classes are unfortunately now DEPRECATED by qiskit
-from qiskit.aqua.operators import WeightedPauliOperator as wpo
-from qiskit.aqua.operators import TPBGroupedWeightedPauliOperator as groupedwpo
 
 from ..utilities import (
     gen_random_str,
@@ -48,7 +42,6 @@ from ..utilities import (
     convert_wpo_and_openfermion,
     convert_to_settings_and_weights,
     bind_params,
-    qTNfromQASM,
 )
 
 # import itertools as it
@@ -1232,202 +1225,7 @@ def gen_meas_circuits(main_circuit, meas_settings, logical_qubits=None):
 # Qiskit WPO class
 #======================#
 
-class CostWPO(CostInterface):
-    """
-    Cost class that internally uses the qiskit weighted product operator
-    objects. NOTE: WeightedPauliOperator is DEPRECATED in qiskit.
-    """
-    def __init__(
-        self,
-        ansatz,
-        instance,
-        weighted_pauli_operators,
-        ):
-        """
-        Parameters
-        ----------
-        ansatz : object implementing AnsatzInterface
-            The ansatz object that this cost can be optimsed over
-        instance : qiskit quantum instance
-            Will be used to generate internal transpiled circuits
-        weighted_pauli_operators : qiskit WeightedPauliOperator
-            Pauli operators whose weighted sum defines the cost
-        """
-        self.ansatz = ansatz
-        self.instance = instance
 
-        # check type of passed operators
-        if not type(weighted_pauli_operators) is wpo:
-            raise TypeError
-
-        # ensure the ansatz and qubit Hamiltonians have same number of qubits
-        assert weighted_pauli_operators.num_qubits==self.ansatz.nb_qubits
-
-        # store operators in grouped form, currently use `unsorted_grouping` method, which
-        # is a greedy method. Sorting method could be controlled with a kwarg
-        self.grouped_weighted_operators = groupedwpo.unsorted_grouping(weighted_pauli_operators)
-        # generate and transpile measurement circuits
-        circuit_cp = copy.deepcopy(self.ansatz.circuit)
-        # circuit_cp.qregs[0].name = 'logicals'
-        measurement_circuits = self.grouped_weighted_operators.construct_evaluation_circuit(
-            wave_function=circuit_cp,
-            statevector_mode=self.instance.is_statevector,
-            qr=circuit_cp.qregs[0]
-            )
-        self._meas_circuits = self.instance.transpile(measurement_circuits)
-    
-    def __call__(self, params):
-        """
-        Wrapper around cost function so it may be called directly
-
-        Parameters
-        ----------
-        params : array-like
-            Params to bind to the ansatz variables (assumed input is same length
-                                                    as self.ansatz.nb_params).
-
-        Returns
-        -------
-        TYPE
-            2d array (Same as Cost), Single entery for each each input parameter.
-
-        """
-        params = np.atleast_2d(params)
-        res = []
-        for pp in params:
-            circs = self.bind_params_to_meas(pp)
-            results = self.instance.execute(circs)
-            res.append(self.evaluate_cost(results))
-        return np.atleast_2d(res).T
-
-    def shot_noise(self, params, nb_shots = 8):
-        params = np.squeeze(params)
-        params = np.atleast_2d([params for ii in range(nb_shots)])
-        return self.__call__(params)
-    
-    def evaluate_cost_and_std(
-        self, 
-        results:qk.result.result.Result, 
-        name='',
-        real_part=True,
-        ):
-        """ 
-        Evaluate the expectation value of the state produced by the 
-        ansatz against the weighted Pauli operators stored, using the
-        results from an experiment.
-
-        NOTE: this takes the statevector mode from the cost obj's quantum
-        instance attribute, which is not necessarily the instance that 
-        has produced the results. The executing instance should be the
-        same backend however, and so (hopefully) operate in the same 
-        statevector mode.
-
-        Parameters
-        ----------
-        results : qiskit results obj
-            Results to evaluate the operators against
-        name : string, optional
-            Used to resolve circuit naming
-        """
-        mean,std = self.grouped_weighted_operators.evaluate_with_result(
-            results,
-            statevector_mode=self.instance.is_statevector,
-            circuit_name_prefix=name
-            )
-        if real_part:
-            if (not np.isclose(np.imag(mean),0.)) or (not np.isclose(np.imag(std),0.)):
-                print('Warning, `evaluate_cost_and_std` throwing away non-zero imaginary part.',file=sys.stderr)
-            return np.real(mean),np.real(std)
-        else:
-            return mean,std
-
-    def evaluate_cost(
-        self, 
-        results:qk.result.result.Result, 
-        name='',
-        real_part=True,
-        **kwargs,
-        ):
-        """ 
-        Evaluate the expectation value of the state produced by the 
-        ansatz against the weighted Pauli operators stored, using the
-        results from an experiment.
-
-        Parameters
-        ----------
-        results : qiskit results obj
-            Results to evaluate the operators against
-        name : string, optional
-            Used to resolve circuit naming
-        """
-        mean,std = self.evaluate_cost_and_std(
-            results=results,
-            name=name
-            )
-        if real_part:
-            if not np.isclose(np.imag(mean),0.):
-                print('Warning, `evaluate_cost` throwing away non-zero imaginary part.',file=sys.stderr)
-            return np.real(mean)
-        else:
-            return mean
-    
-    @property
-    def _min_energy(self):
-        print('warning CostWPO._min_energy is not working')
-        eig = qk.aqua.algorithms.ExactEigensolver(self.grouped_weighted_operators)
-        eig = eig.run()
-        return np.squeeze(abs(eig.eigenvalues))
-        
-class CostWPOquimb(CostWPO):
-
-    def bind_params_to_meas(self,params=None,params_names=None):
-        """
-        """
-        return [{params_names:params}]
-
-    def evaluate_cost(
-        self, 
-        results,
-        name='',
-        real_part=True,
-        **kwargs,
-        ):
-        """
-        Parameters
-        ----------
-        results : dict
-            Pairs name:pt 
-        """
-
-        # bind ansatz circuit at current param point
-        param_pt = results[name]
-        bound_circ = self.ansatz.circuit.bind_parameters(dict(zip(self.ansatz.params,param_pt)))
-        # convert to TN
-        tn_of_ansatz = qTNfromQASM(bound_circ.qasm())
-        # first time need to unpack wpo into quimb form
-        if not hasattr(self,'measurement_ops'):
-            # total hack and reliant on exact form of `.print_details()` string, but works currently
-            self.pauli_weights = [ np.complex128(l.split('\t')[1]) for l in self.grouped_weighted_operators.print_details().split('\n') if len(l)>0 and not l[0]=='T' ]
-            pauli_strings = [ l.split('\t')[0] for l in self.grouped_weighted_operators.print_details().split('\n') if len(l)>0 and not l[0]=='T' ]
-            self.measurement_ops = [ qu.kron(*[ qu.pauli(i) for i in p ]) for p in pauli_strings ]
-
-        return np.sum(
-            np.real(
-                np.array(tn_of_ansatz.local_expectation(
-                    self.measurement_ops,
-                    where=tuple(range(self.ansatz.nb_qubits)),)
-                ) * self.pauli_weights)
-            )
-
-    def evaluate_cost_and_std(
-        self, 
-        results, 
-        name='',
-        real_part=True,
-        ):
-        """
-        """
-        return self.evaluate_cost(results,name,real_part,),0.
 
 #%%
 # -------------------------------------------------------------- #
