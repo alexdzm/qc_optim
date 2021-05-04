@@ -89,9 +89,15 @@ class BaseAnsatz(AnsatzInterface):
         num_qubits,
         depth,
         qubit_names=None,
+        strict_transpile=False,
         **kwargs
     ):
-        """ """
+        """
+        strict_transpile : boolean, optional
+            If strict_transpile is True, after the first call to
+            `transpiled_circuit` method following calls will raise an error if
+            they request a different instance or method than was first passed
+        """
         self._nb_qubits = num_qubits
         self._depth = depth
         self._qubit_names = qubit_names
@@ -102,10 +108,11 @@ class BaseAnsatz(AnsatzInterface):
         if qubit_names is not None:
             self._circuit.qregs[0].name = qubit_names
 
+        self.strict_transpile = strict_transpile
         self._transpiled_circuit = None
         self._transpiler_map = None
         self._transpiling_instance = None
-        self._transpiling_engine = None
+        self._transpiling_method = None
 
     def _generate_params(self):
         """ To be implemented in the subclasses """
@@ -118,8 +125,7 @@ class BaseAnsatz(AnsatzInterface):
     def transpiled_circuit(
         self,
         instance,
-        engine='instance',
-        strict=False,
+        method='instance',
         enforce_bijection=False,
     ):
         """
@@ -129,13 +135,13 @@ class BaseAnsatz(AnsatzInterface):
         ----------
         instance : qiskit.utils.QuantumInstance obj
             Instance to use as reference for transpiling
-        engine : str, optional
+        method : str, optional
             Method to use for transpiling, supported options:
                 -> "instance" : use quantum instance
                 -> "pytket" : use pytket, targeting instance's backend
         strict : boolean, optional
             If strict is True, consecutive calls after the first will raise an
-            error if they request a different instance or engine than was first
+            error if they request a different instance or method than was first
             passed
         enforce_bijection : boolean, optional
             If set to True, will raise ValueError if the transpiler map found
@@ -149,17 +155,17 @@ class BaseAnsatz(AnsatzInterface):
         if (
             (self._transpiling_instance is not None
                 and self._transpiling_instance != instance)
-            or (self._transpiling_engine is not None
-                and self._transpiling_engine != engine)
+            or (self._transpiling_method is not None
+                and self._transpiling_method != method)
         ):
-            if strict:
+            if self.strict_transpile:
                 raise ValueError(
                     'In strict mode multiple calls to transpiled_circuit using'
-                    + ' different quantum instances or transpiler engines are'
+                    + ' different quantum instances or transpiler methods are'
                     + ' not allowed.'
                 )
             self._transpiling_instance = None
-            self._transpiling_engine = None
+            self._transpiling_method = None
             self._transpiled_circuit = None
             self._transpiler_map = None
 
@@ -167,16 +173,16 @@ class BaseAnsatz(AnsatzInterface):
         if self._transpiled_circuit is not None:
             return self._transpiled_circuit
 
-        # store instance and engine
+        # store instance and method
         if self._transpiling_instance is None:
             self._transpiling_instance = instance
-        if self._transpiling_engine is None:
-            self._transpiling_engine = engine
+        if self._transpiling_method is None:
+            self._transpiling_method = method
 
         self._transpiled_circuit, self._transpiler_map = transpile_circuit(
             self.circuit,
             self._transpiling_instance,
-            self._transpiling_engine,
+            self._transpiling_method,
             enforce_bijection=enforce_bijection,
         )
 
@@ -219,13 +225,13 @@ class BaseAnsatz(AnsatzInterface):
 class TrivialAnsatz(BaseAnsatz):
     """ Ansatz that wraps a fixed circuit """
 
-    def __init__(self, fixed_circuit):
+    def __init__(self, fixed_circuit, **kwargs):
         """ """
         self._generate_circuit = (lambda: fixed_circuit)
         self._generate_params = (lambda: [])
 
         # explicitly call base class initialiser
-        super(TrivialAnsatz, self).__init__(fixed_circuit.num_qubits, 0)
+        super().__init__(fixed_circuit.num_qubits, 0, **kwargs)
 
 
 class AnsatzFromFunction(AnsatzInterface):

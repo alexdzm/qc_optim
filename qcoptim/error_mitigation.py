@@ -489,12 +489,13 @@ class PurityBoostCalibrator(BaseCalibrator):
     def __init__(
         self,
         ansatz,
-        instance,
+        instance=None,
         num_random=None,
         seed=None,
         num_bootstraps=1000,
         calibration_point=None,
         circ_name=None,
+        transpiler='instance',
         rand_meas_handler=None,
     ):
         """
@@ -502,7 +503,7 @@ class PurityBoostCalibrator(BaseCalibrator):
         ----------
         ansatz : class implementing ansatz interface
             Ansatz obj
-        instance : qiskit.aqua.QuantumInstance
+        instance : qiskit.utils.QuantumInstance, optional
             Quantum instance to use
         num_random : int
             Number of random basis to generate
@@ -516,6 +517,10 @@ class PurityBoostCalibrator(BaseCalibrator):
             Function used to name circuits, should have signature `int -> str`
             and preferably should prefix the int, e.g. return something like
             'some-str'+str(int)`
+        transpiler : str, optional
+            Choose how to transpile circuits, current options are:
+                'instance' : use quantum instance
+                'pytket' : use pytket compiler
         rand_meas_handler : None, optional
             Can pass an already initialised RandomMeasurementHandler obj to use
             to generate random basis circuits internally. This can be shared
@@ -569,6 +574,7 @@ class PurityBoostCalibrator(BaseCalibrator):
                 num_random,
                 seed=seed,
                 circ_name=circ_name,
+                transpiler=transpiler,
             )
         else:
             if ansatz is not None and ansatz != rand_meas_handler.ansatz:

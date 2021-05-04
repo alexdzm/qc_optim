@@ -7,15 +7,19 @@ import pytest
 import numpy as np
 
 from qiskit import Aer, QuantumCircuit
-from qiskit.aqua import QuantumInstance
+from qiskit.circuit import Measure
+from qiskit.utils import QuantumInstance
 
 from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
 from qcoptim.utilities import (
+    add_random_measurements,
     RandomMeasurementHandler,
     transpile_circuit,
     make_quantum_instance,
 )
 from qcoptim.utilities.pytket import compile_for_backend
+
+_TEST_IBMQ_BACKEND = 'ibmq_santiago'
 
 
 @pytest.mark.parametrize("device", ['ibmq_santiago', 'ibmq_manhattan'])
@@ -50,25 +54,58 @@ def test_pytket_compile_for_backend(device):
     assert t_circs[1].name == 'test2'
     assert t_circs[1] != circs[1]
 
+    # check parameters are still in circuit
+    for param in ansatz.params:
+        assert param in t_circs[0].parameters
+        assert param in t_circs[1].parameters
+
     # full test would submit to instance and make sure it executes, but don't
     # want to do that because it'll be very slow
 
 
-@pytest.mark.parametrize("engine", ['instance', 'pytket'])
-def test_transpile_circuit(engine):
+@pytest.mark.parametrize("method", ['instance', 'pytket'])
+def test_transpile_circuit(method):
     """ """
     num_qubits = 4
 
-    ibmq_instance = make_quantum_instance('ibmq_santiago')
+    ibmq_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
     ansatz = RandomAnsatz(num_qubits, 3)
     circ = ansatz.circuit
 
-    _, t_map = transpile_circuit(circ, ibmq_instance, engine)
+    t_circ, t_map = transpile_circuit(circ, ibmq_instance, method)
+    assert t_circ != circ
     for qubit in range(num_qubits):
         assert qubit in t_map.keys()
 
+    # check parameters are still in circuit
+    for param in ansatz.params:
+        assert param in t_circ.parameters
 
-def test_random_measurement_handler():
+
+def test_add_random_measurements():
+    """ """
+    circ = RandomAnsatz(4, 3).circuit
+
+    # test different values of active_qubits
+    for active_qubits in [None, [1], [2, 3]]:
+        new_circs = add_random_measurements(
+            circ, 10, active_qubits=active_qubits)
+        assert len(new_circs) == 10
+        for mcirc in new_circs:
+            measured_qubits = set()
+            for instruction in mcirc.data:
+                if isinstance(instruction[0], Measure):
+                    measured_qubits.add(instruction[1][0].index)
+
+            if active_qubits is None:
+                test_set = set(range(circ.num_qubits))
+            else:
+                test_set = set(active_qubits)
+            assert measured_qubits == test_set
+
+
+@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+def test_random_measurement_handler(transpiler):
     """ """
     num_random = 10
     seed = 0
@@ -76,10 +113,16 @@ def test_random_measurement_handler():
     def circ_name(idx):
         return 'test_circ'+f'{idx}'
 
-    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
-    ansatz = RandomAnsatz(2, 2)
+    transpile_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
+
+    ansatz = RandomAnsatz(2, 2, strict_transpile=True)
     rand_meas_handler = RandomMeasurementHandler(
-        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+        ansatz,
+        transpile_instance,
+        num_random,
+        transpiler=transpiler,
+        seed=seed,
+        circ_name=circ_name,
     )
 
     point = np.ones(ansatz.nb_params)
@@ -105,17 +148,20 @@ def test_random_measurement_handler():
     assert circs2[0].name == 'HaarRandom0'
 
 
-def test_random_measurement_handler_trivial_ansatz():
+@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+def test_random_measurement_handler_trivial_ansatz(transpiler):
     """
     Test special case of ansatz with no parameters
     """
     num_random = 10
     seed = 0
 
-    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    transpile_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
+
     circ = QuantumCircuit(2)
     rand_meas_handler = RandomMeasurementHandler(
-        TrivialAnsatz(circ), instance, num_random, seed=seed,
+        TrivialAnsatz(circ), transpile_instance, num_random,
+        transpiler=transpiler, seed=seed,
     )
 
     circs = rand_meas_handler.circuits([])
@@ -123,7 +169,8 @@ def test_random_measurement_handler_trivial_ansatz():
     assert rand_meas_handler.circuits([]) == []
 
 
-def test_random_measurement_handler_2d_point():
+@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+def test_random_measurement_handler_2d_point(transpiler):
     """
     Test correct behaviour with array of points
     """
@@ -131,10 +178,12 @@ def test_random_measurement_handler_2d_point():
     num_points = 3
     seed = 0
 
-    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    transpile_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
+
     ansatz = RandomAnsatz(2, 2)
     rand_meas_handler = RandomMeasurementHandler(
-        ansatz, instance, num_random, seed=seed,
+        ansatz, transpile_instance, num_random, transpiler=transpiler,
+        seed=seed,
     )
 
     points = np.random.random(num_points*ansatz.nb_params)

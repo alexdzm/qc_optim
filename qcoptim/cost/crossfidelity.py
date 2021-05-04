@@ -26,12 +26,13 @@ class CrossFidelity(CostInterface):
     def __init__(
         self,
         ansatz,
-        instance,
+        instance=None,
         nb_random=None,
         seed=None,
         comparison_results=None,
         prefixA='CrossFid',
         prefixB='CrossFid',
+        transpiler='instance',
         rand_meas_handler=None,
     ):
         """
@@ -39,7 +40,7 @@ class CrossFidelity(CostInterface):
         ----------
         ansatz : object implementing AnsatzInterface
             The ansatz object that this cost can be optimsed over
-        instance : qiskit quantum instance
+        instance : qiskit.utils.QuantumInstance
             Will be used to generate internal transpiled circuits
         nb_random : int, optional
             The number of random unitaries to average over
@@ -60,6 +61,10 @@ class CrossFidelity(CostInterface):
         prefixB : str, optional
             Prefix string to use to extract system B's results from
             comparison_results.
+        transpiler : str, optional
+            Choose how to transpile circuits, current options are:
+                'instance' : use quantum instance
+                'pytket' : use pytket compiler
         rand_meas_handler : None, optional
             Can pass an already initialised RandomMeasurementHandler obj to use
             to generate random basis circuits internally. This can be shared
@@ -93,6 +98,7 @@ class CrossFidelity(CostInterface):
                 nb_random,
                 seed=seed,
                 circ_name=circ_name,
+                transpiler=transpiler,
             )
         else:
             if ansatz is not None and ansatz != rand_meas_handler.ansatz:

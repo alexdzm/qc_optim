@@ -20,7 +20,7 @@ def test_ansatz_transpile():
     circ.h(2)
     circ.cx(2, 3)
     circ.cx(1, 2)
-    ansatz = TrivialAnsatz(circ)
+    ansatz = TrivialAnsatz(circ, strict_transpile=False)
 
     sim_instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
     ibmq_instance = make_quantum_instance('ibmq_santiago')
@@ -33,23 +33,22 @@ def test_ansatz_transpile():
         pass
 
     # test these all work
-    _ = ansatz.transpiled_circuit(ibmq_instance, engine='instance',
+    _ = ansatz.transpiled_circuit(ibmq_instance, method='instance',
                                   enforce_bijection=True)
     _ = ansatz.transpiler_map
-    _ = ansatz.transpiled_circuit(ibmq_instance, engine='pytket',
+    _ = ansatz.transpiled_circuit(ibmq_instance, method='pytket',
                                   enforce_bijection=True)
     _ = ansatz.transpiler_map
 
     # these should fail
+    ansatz.strict_transpile = True
     try:
-        ansatz.transpiled_circuit(ibmq_instance, engine='instance',
-                                  strict=True)
+        ansatz.transpiled_circuit(ibmq_instance, method='instance',)
         assert False, 'should have raised error'
     except ValueError:
         pass
     try:
-        ansatz.transpiled_circuit(sim_instance, engine='pytket',
-                                  strict=True)
+        ansatz.transpiled_circuit(sim_instance, method='pytket',)
         assert False, 'should have raised error'
     except ValueError:
         pass

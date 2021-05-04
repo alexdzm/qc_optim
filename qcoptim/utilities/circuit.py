@@ -5,6 +5,7 @@ Circuit utilities
 import numpy as np
 
 from qiskit.circuit import Measure
+from qiskit.utils import QuantumInstance
 from qiskit.quantum_info import random_unitary
 
 from .core import prefix_to_names
@@ -14,12 +15,12 @@ from .pytket import compile_for_backend
 def transpile_circuit(
     circuit,
     instance,
-    engine,
+    method,
     enforce_bijection=False,
 ):
     """
     Transpile the circuit for a backend passed as a quantum instance, using
-    method specified by engine arg.
+    method specified by method arg.
 
     Parameters
     ----------
@@ -27,7 +28,7 @@ def transpile_circuit(
         Circuit to transpile
     instance : qiskit.utils.QuantumInstance obj
         Instance to use as reference for transpiling
-    engine : str, optional
+    method : str, optional
         Method to use for transpiling, supported options:
             -> "instance" : use quantum instance
             -> "pytket" : use pytket, targeting instance's backend
@@ -45,11 +46,13 @@ def transpile_circuit(
     tmp = circuit.copy()
     tmp.measure_all()
 
-    # run transpiler with engine
-    if engine == 'instance':
+    # run transpiler with method
+    if method == 'instance':
         t_circ = instance.transpile(tmp)[0]
-    elif engine == 'pytket':
+    elif method == 'pytket':
         t_circ = compile_for_backend(instance.backend, tmp)
+    else:
+        raise ValueError('Transpiler method: '+f'{method}'+', not recognized.')
 
     # extract transpiler map from circuit data
     transpiler_map = {}
@@ -120,7 +123,7 @@ def bind_params(circ, param_values, param_variables, param_name=None):
     return bound_circ
 
 
-def add_random_measurements(circuit, num_rand, seed=None):
+def add_random_measurements(circuit, num_rand, active_qubits=None, seed=None):
     """
     Add single qubit measurements in Haar random basis to all the qubits, at
     the end of the circuit. Copies the circuit so preserves registers,
@@ -133,6 +136,8 @@ def add_random_measurements(circuit, num_rand, seed=None):
         Circuit to add random measurements to
     num_rand : int
         Number of random unitaries to use
+    active_qubits : list-like iterable, optional
+        If passed, random measurements will only be applied to these qubits.
     seed : int, optional
         Random number seed for reproducibility
 
@@ -143,17 +148,31 @@ def add_random_measurements(circuit, num_rand, seed=None):
     """
     rand_state = np.random.default_rng(seed)
 
+    # by default apply to all qubits
+    if active_qubits is None:
+        active_qubits = list(range(circuit.num_qubits))
+
     rand_meas_circuits = []
     for _ in range(num_rand):
 
         # copy circuit to preserve registers, but remove any final measurements
         new_circ = circuit.copy()
         new_circ.remove_final_measurements()
+
         # add random single qubit unitaries
-        for qb_idx in range(new_circ.num_qubits):
+        for qb_idx in active_qubits:
             rand_gate = random_unitary(2, seed=rand_state)
             new_circ.append(rand_gate, [qb_idx])
-        new_circ.measure_all()
+
+        # adapted from qiskit.QuantumCircuit.measure_active() source
+        qubits_to_measure = [
+            qubit for qubit in new_circ.qubits if qubit.index in active_qubits
+        ]
+        new_creg = new_circ._create_creg(len(active_qubits), 'meas')
+        new_circ.add_register(new_creg)
+        new_circ.barrier()
+        new_circ.measure(qubits_to_measure, new_creg)
+
         rand_meas_circuits.append(new_circ)
 
     return rand_meas_circuits
@@ -175,6 +194,7 @@ class RandomMeasurementHandler():
         num_random,
         seed=None,
         circ_name=None,
+        transpiler='instance',
     ):
         """
         Parameters
@@ -191,6 +211,10 @@ class RandomMeasurementHandler():
             Function used to name circuits, should have signature `int -> str`
             and preferably should prefix the int, e.g. return something like
             'some-str'+str(int)`
+        transpiler : str, optional
+            Choose how to transpile circuits, current options are:
+                'instance' : use quantum instance
+                'pytket' : use pytket compiler
         """
         self.ansatz = ansatz
         self.instance = instance
@@ -201,13 +225,26 @@ class RandomMeasurementHandler():
                 return 'HaarRandom' + f'{idx}'
         self._circ_name = circ_name
 
-        # make, name and transpile circuits
-        self._meas_circuits = add_random_measurements(self.ansatz.circuit,
-                                                      self.num_random,
-                                                      seed=seed)
+        # transpile ansatz circuit
+        t_ansatz_circ = self.ansatz.transpiled_circuit(
+            self.instance, method=transpiler, enforce_bijection=True)
+
+        # make and name measurement circuits
+        self._meas_circuits = add_random_measurements(
+            t_ansatz_circ,
+            self.num_random,
+            active_qubits=self.ansatz.transpiler_map.values(),
+            seed=seed,
+        )
+
+        # convert measurement instructions to the backend's gateset
+        simple_instance = QuantumInstance(
+            self.instance.backend, optimization_level=0)
+        self._meas_circuits = simple_instance.transpile(self._meas_circuits)
+
+        # name circuits
         for idx, circ in enumerate(self._meas_circuits):
             circ.name = self._circ_name(idx)
-        self._meas_circuits = self.instance.transpile(self._meas_circuits)
 
         # used to allow shared use without generating redundant circuit copies
         self._last_point = None

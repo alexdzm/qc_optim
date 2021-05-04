@@ -2,6 +2,8 @@
 Tests for cost classes and functions
 """
 
+import pytest
+
 import numpy as np
 
 from qiskit import Aer, QuantumCircuit
@@ -9,16 +11,20 @@ from qiskit.aqua import QuantumInstance
 
 from qcoptim.ansatz import TrivialAnsatz, RandomAnsatz
 from qcoptim.cost import CrossFidelity
-from qcoptim.utilities import RandomMeasurementHandler
+from qcoptim.utilities import RandomMeasurementHandler, make_quantum_instance
+
+_TEST_IBMQ_BACKEND = 'ibmq_santiago'
 
 
-def test_cross_fidelity():
+@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+def test_cross_fidelity(transpiler):
     """ """
     num_qubits = 2
     num_random = 500
     seed = 0
 
-    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    transpile_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
+    exe_instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
 
     circ = QuantumCircuit(num_qubits)
     circ_ortho = QuantumCircuit(num_qubits)
@@ -29,20 +35,22 @@ def test_cross_fidelity():
     # get one-side of the data
     init_crossfid = CrossFidelity(
         TrivialAnsatz(circ),
-        instance,
+        transpile_instance,
+        transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
         prefixA='init-data',
     )
     circs = init_crossfid.bind_params_to_meas([])
     assert len(circs) == num_random
-    results = instance.execute(circs)
+    results = exe_instance.execute(circs)
     comparison_results = init_crossfid.tag_results_metadata(results)
 
     # new objs to compute cross-fidelity overlaps
     crossfid = CrossFidelity(
         TrivialAnsatz(circ),
-        instance,
+        transpile_instance,
+        transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
         comparison_results=comparison_results,
@@ -51,7 +59,8 @@ def test_cross_fidelity():
     )
     crossfid_ortho = CrossFidelity(
         TrivialAnsatz(circ_ortho),
-        instance,
+        transpile_instance,
+        transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
         comparison_results=comparison_results,
@@ -60,7 +69,8 @@ def test_cross_fidelity():
     )
     crossfid_superpos = CrossFidelity(
         TrivialAnsatz(circ_superpos),
-        instance,
+        transpile_instance,
+        transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
         comparison_results=comparison_results,
@@ -80,7 +90,7 @@ def test_cross_fidelity():
     assert crossfid_superpos.bind_params_to_meas([]) == []
 
     # compute overlaps and test values
-    results = instance.execute(circs)
+    results = exe_instance.execute(circs)
     same, same_std = crossfid.evaluate_cost_and_std(results)
     ortho, ortho_std = crossfid_ortho.evaluate_cost_and_std(results)
     superpos, superpos_std = crossfid_superpos.evaluate_cost_and_std(results)
@@ -94,7 +104,8 @@ def test_cross_fidelity():
         # assert mean + 4*std > target
 
 
-def test_cross_fidelity_subsampling_rand_meas_handler():
+@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+def test_cross_fidelity_subsampling_rand_meas_handler(transpiler):
     """ """
     num_random = 10
     seed = 0
@@ -102,28 +113,30 @@ def test_cross_fidelity_subsampling_rand_meas_handler():
     def circ_name(idx):
         return 'test_circ'+f'{idx}'
 
-    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
-    ansatz = RandomAnsatz(2, 2)
+    transpile_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
+    exe_instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+
+    ansatz = RandomAnsatz(2, 2, strict_transpile=True)
     rand_meas_handler = RandomMeasurementHandler(
-        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+        ansatz,
+        transpile_instance,
+        num_random,
+        transpiler=transpiler,
+        seed=seed,
+        circ_name=circ_name,
     )
 
     # get one-side of the data
-    init_crossfid = CrossFidelity(
-        ansatz,
-        instance,
-        rand_meas_handler=rand_meas_handler,
-    )
+    init_crossfid = CrossFidelity(ansatz, rand_meas_handler=rand_meas_handler,)
     point = np.random.random(ansatz.nb_params)
     circs = init_crossfid.bind_params_to_meas(point)
     assert len(circs) == num_random
-    results = instance.execute(circs)
+    results = exe_instance.execute(circs)
     comparison_results = init_crossfid.tag_results_metadata(results)
 
     # make subsampled obj
     crossfid = CrossFidelity(
         ansatz,
-        instance,
         nb_random=num_random//2,
         rand_meas_handler=rand_meas_handler,
         comparison_results=comparison_results,
@@ -136,11 +149,12 @@ def test_cross_fidelity_subsampling_rand_meas_handler():
     assert len(circs) == num_random
 
     # check that only need first half to evaluate crossfid
-    results = instance.execute(circs[:num_random//2])
+    results = exe_instance.execute(circs[:num_random//2])
     _, _ = crossfid.evaluate_cost_and_std(results)
 
 
-def test_cross_fidelity_shared_rand_meas_handler():
+@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+def test_cross_fidelity_shared_rand_meas_handler(transpiler):
     """ """
     num_random = 10
     seed = 0
@@ -148,22 +162,19 @@ def test_cross_fidelity_shared_rand_meas_handler():
     def circ_name(idx):
         return 'test_circ'+f'{idx}'
 
-    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
-    ansatz = RandomAnsatz(2, 2)
+    transpile_instance = make_quantum_instance(_TEST_IBMQ_BACKEND)
+    ansatz = RandomAnsatz(2, 2, strict_transpile=True)
     rand_meas_handler = RandomMeasurementHandler(
-        ansatz, instance, num_random, seed=seed, circ_name=circ_name,
+        ansatz,
+        transpile_instance,
+        num_random,
+        transpiler=transpiler,
+        seed=seed,
+        circ_name=circ_name,
     )
 
-    crossfid1 = CrossFidelity(
-        ansatz,
-        instance,
-        rand_meas_handler=rand_meas_handler,
-    )
-    crossfid2 = CrossFidelity(
-        ansatz,
-        instance,
-        rand_meas_handler=rand_meas_handler,
-    )
+    crossfid1 = CrossFidelity(ansatz, rand_meas_handler=rand_meas_handler,)
+    crossfid2 = CrossFidelity(ansatz, rand_meas_handler=rand_meas_handler,)
 
     # check blocking behaviour of cross-fid objs with shared rand_meas_handler
     point = np.ones(ansatz.nb_params)
