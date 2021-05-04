@@ -43,15 +43,17 @@ import sys
 import random
 
 import qiskit as qk
+
 import numpy as np
 
-from .utilities import gen_cyclic_graph
+from .utilities import gen_cyclic_graph, transpile_circuit
 
 
 class AnsatzInterface(metaclass=abc.ABCMeta):
-    """Interface for a parameterised ansatz. Specifies an object that must have five
-    properties: a depth, a list of qiskit parameters objects, a circuit, the number 
-    of qubits and the number of parameters.
+    """
+    Interface for a parameterised ansatz. Specifies an object that must have
+    five properties: a depth, a list of qiskit parameters objects, a circuit,
+    the number of qubits and the number of parameters.
     """
     @property
     @abc.abstractmethod
@@ -78,16 +80,18 @@ class AnsatzInterface(metaclass=abc.ABCMeta):
     def nb_params(self):
         raise NotImplementedError
 
+
 class BaseAnsatz(AnsatzInterface):
     """ """
 
     def __init__(
-                 self,
-                 num_qubits,
-                 depth,
-                 qubit_names = None,
-                 **kwargs
-                ):
+        self,
+        num_qubits,
+        depth,
+        qubit_names=None,
+        **kwargs
+    ):
+        """ """
         self._nb_qubits = num_qubits
         self._depth = depth
         self._qubit_names = qubit_names
@@ -98,6 +102,11 @@ class BaseAnsatz(AnsatzInterface):
         if qubit_names is not None:
             self._circuit.qregs[0].name = qubit_names
 
+        self._transpiled_circuit = None
+        self._transpiler_map = None
+        self._transpiling_instance = None
+        self._transpiling_engine = None
+
     def _generate_params(self):
         """ To be implemented in the subclasses """
         raise NotImplementedError
@@ -105,6 +114,86 @@ class BaseAnsatz(AnsatzInterface):
     def _generate_circuit(self):
         """ To be implemented in the subclasses """
         raise NotImplementedError
+
+    def transpiled_circuit(
+        self,
+        instance,
+        engine='instance',
+        strict=False,
+        enforce_bijection=False,
+    ):
+        """
+        Transpile the ansatz circuit
+
+        Parameters
+        ----------
+        instance : qiskit.utils.QuantumInstance obj
+            Instance to use as reference for transpiling
+        engine : str, optional
+            Method to use for transpiling, supported options:
+                -> "instance" : use quantum instance
+                -> "pytket" : use pytket, targeting instance's backend
+        strict : boolean, optional
+            If strict is True, consecutive calls after the first will raise an
+            error if they request a different instance or engine than was first
+            passed
+        enforce_bijection : boolean, optional
+            If set to True, will raise ValueError if the transpiler map found
+            is not a bijection
+
+        Returns
+        -------
+        qiskit.QuantumCircuit
+            The transpiled ansatz circuit
+        """
+        if (
+            (self._transpiling_instance is not None
+                and self._transpiling_instance != instance)
+            or (self._transpiling_engine is not None
+                and self._transpiling_engine != engine)
+        ):
+            if strict:
+                raise ValueError(
+                    'In strict mode multiple calls to transpiled_circuit using'
+                    + ' different quantum instances or transpiler engines are'
+                    + ' not allowed.'
+                )
+            self._transpiling_instance = None
+            self._transpiling_engine = None
+            self._transpiled_circuit = None
+            self._transpiler_map = None
+
+        # return transpiled circuit if already made
+        if self._transpiled_circuit is not None:
+            return self._transpiled_circuit
+
+        # store instance and engine
+        if self._transpiling_instance is None:
+            self._transpiling_instance = instance
+        if self._transpiling_engine is None:
+            self._transpiling_engine = engine
+
+        self._transpiled_circuit, self._transpiler_map = transpile_circuit(
+            self.circuit,
+            self._transpiling_instance,
+            self._transpiling_engine,
+            enforce_bijection=enforce_bijection,
+        )
+
+        return self._transpiled_circuit
+
+    @property
+    def transpiler_map(self):
+        """
+        Transpiler map returns the logical -> physical qubit index mapping of
+        the last call to transpiled_circuit method
+        """
+        if self._transpiler_map is None:
+            raise AttributeError(
+                'Ansatz has no transpiler map, transpiled_circuit method must'
+                + ' be invoked first.'
+            )
+        return self._transpiler_map
 
     @property
     def depth(self):
@@ -126,16 +215,18 @@ class BaseAnsatz(AnsatzInterface):
     def nb_params(self):
         return self._nb_params
 
+
 class TrivialAnsatz(BaseAnsatz):
     """ Ansatz that wraps a fixed circuit """
 
-    def __init__(self,fixed_circuit):
+    def __init__(self, fixed_circuit):
         """ """
         self._generate_circuit = (lambda: fixed_circuit)
         self._generate_params = (lambda: [])
 
         # explicitly call base class initialiser
-        super(TrivialAnsatz,self).__init__(fixed_circuit.num_qubits,0)
+        super(TrivialAnsatz, self).__init__(fixed_circuit.num_qubits, 0)
+
 
 class AnsatzFromFunction(AnsatzInterface):
     """ Returns an instance of the GHZ parameterized class"""
@@ -186,6 +277,7 @@ class AnsatzFromFunction(AnsatzInterface):
     @property
     def nb_params(self):
         return self._nb_params
+
 
 class AnsatzFromCircuit(AnsatzInterface):
     """
@@ -241,6 +333,7 @@ class AnsatzFromCircuit(AnsatzInterface):
     @property
     def nb_params(self):
         return self._nb_params
+
 
 class AnsatzFromQasm(AnsatzFromCircuit):
     """
@@ -302,7 +395,8 @@ class AnsatzFromQasm(AnsatzFromCircuit):
         self._x_sol = x_sol
         c = c.decompose().decompose()
         super().__init__(c)
-       
+
+
 class RandomAnsatz(BaseAnsatz):
     """ """
 
@@ -385,6 +479,7 @@ class RandomAnsatz(BaseAnsatz):
         
         return qc
 
+
 class RegularXYZAnsatz(BaseAnsatz):
     """ """
 
@@ -452,6 +547,7 @@ class RegularXYZAnsatz(BaseAnsatz):
 
         return qc
 
+
 class RegularU3Ansatz(BaseAnsatz):
     """ """
 
@@ -502,6 +598,7 @@ class RegularU3Ansatz(BaseAnsatz):
             param_counter += 3
         
         return qc
+
 
 class RegularU2Ansatz(BaseAnsatz):
     """ """
@@ -562,6 +659,7 @@ class RegularU2Ansatz(BaseAnsatz):
             param_counter += 2
         
         return qc
+
 
 class RegularRandomU3ParamAnsatz(BaseAnsatz):
     """ 
@@ -634,6 +732,7 @@ class RegularRandomU3ParamAnsatz(BaseAnsatz):
         
         return qc
 
+
 class RegularRandomXYZAnsatz(BaseAnsatz):
     """ 
     Regular entangeling gates + random U3 unitaries per layer. Only 1 parameter per u3 unitary
@@ -704,7 +803,8 @@ class RegularRandomXYZAnsatz(BaseAnsatz):
                 qc.rz(self._params[param_counter],q)
             param_counter += 1
         return qc
-        
+
+
 # ------------------------------------------------------------------------------
 def count_params_from_func(ansatz):
     """ Counts the number of parameters that the ansatz function accepts"""
@@ -775,6 +875,7 @@ def _GHZ_3qubits_6_params_cx0(params, barriers = False):
     if barriers: c.barrier()
     return c
 
+
 def _GHZ_3qubits_6_params_cx1(params, barriers = False):
     """ Returns function handle for 6 param ghz state 1 swap"""
     logical_qubits = qk.QuantumRegister(3, 'logicals')
@@ -792,6 +893,7 @@ def _GHZ_3qubits_6_params_cx1(params, barriers = False):
     c.ry(params[5], 2)
     if barriers: c.barrier()
     return c
+
 
 def _GHZ_3qubits_6_params_cx2(params, barriers = False):
     """ Returns function handle for 6 param ghz state 2 swaps"""
@@ -811,6 +913,7 @@ def _GHZ_3qubits_6_params_cx2(params, barriers = False):
     c.ry(params[5], 2)
     if barriers: c.barrier()
     return c
+
 
 def _GHZ_3qubits_6_params_cx3(params, barriers = False):
     """ Returns function handle for 6 param ghz state 3 swaps"""
@@ -832,6 +935,7 @@ def _GHZ_3qubits_6_params_cx3(params, barriers = False):
     if barriers: c.barrier()
     return c
 
+
 def _GHZ_3qubits_6_params_cx4(params, barriers = False):
     """ Returns function handle for 6 param ghz state 4 swaps"""
     logical_qubits = qk.QuantumRegister(3, 'logicals')
@@ -852,6 +956,7 @@ def _GHZ_3qubits_6_params_cx4(params, barriers = False):
     c.ry(params[5], 2)
     if barriers: c.barrier()
     return c
+
 
 def _GHZ_3qubits_6_params_cx5(params, barriers = False):
     """ Returns function handle for 6 param ghz state 5 swaps"""
@@ -875,6 +980,7 @@ def _GHZ_3qubits_6_params_cx5(params, barriers = False):
     if barriers: c.barrier()
     return c
 
+
 def _GHZ_3qubits_6_params_cx6(params, barriers = False):
     """ Returns function handle for 6 param ghz state 6 swaps"""
     logical_qubits = qk.QuantumRegister(3, 'logicals')
@@ -897,6 +1003,7 @@ def _GHZ_3qubits_6_params_cx6(params, barriers = False):
     c.ry(params[5], 2)
     if barriers: c.barrier()
     return c
+
 
 def _GHZ_3qubits_6_params_cx7(params, barriers = False):
     """ Returns function handle for 6 param ghz state 7 swaps"""
@@ -954,7 +1061,6 @@ def _GHZ_3qubits_cx7_u3_correction(params, barriers = False):
     return c
 
 
-    
 def _GraphCycl_6qubits_6params(params, barriers = False):        
     """ Returns handle to cyc6 cluster state with c-phase gates"""
     logical_qubits = qk.QuantumRegister(6, 'logicals')
@@ -975,6 +1081,7 @@ def _GraphCycl_6qubits_6params(params, barriers = False):
     c.cz(5,0)
     if barriers: c.barrier()
     return c
+
 
 def _GraphCycl_6qubits_12params(params, barriers = False):        
     """ Returns handle to cyc6 cluster state with c-phase gates"""
@@ -997,6 +1104,7 @@ def _GraphCycl_6qubits_12params(params, barriers = False):
     if barriers: c.barrier()
     return c
 
+
 def _GraphCycl_6qubits_6params_inefficient(params, barriers = False):        
     """ Returns handle to cyc6 cluster state with cry() gates"""
     logical_qubits = qk.QuantumRegister(6, 'logicals')
@@ -1017,6 +1125,7 @@ def _GraphCycl_6qubits_6params_inefficient(params, barriers = False):
     c.crz(np.pi, 5,0)
     if barriers: c.barrier()
     return c
+
 
 def _GraphCycl_6qubits_24params(params, barriers = False):
     """ Ansatz to be refined, too many params - BO doens't converge"""
@@ -1090,7 +1199,6 @@ def _GraphCycl_6qubits_init_rotations(params,
     c.cz(5,0)
     if barriers: c.barrier()
     return c
-
 
 
 def _GraphCycl_12qubits_init_rotations(params, 

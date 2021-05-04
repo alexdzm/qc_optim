@@ -62,7 +62,12 @@ from .core import (
 )
 from .ibmq import BackendManager, make_quantum_instance
 from .stats import bootstrap_resample
-from .circuit import add_random_measurements, RandomMeasurementHandler, bind_params
+from .circuit import (
+    add_random_measurements,
+    RandomMeasurementHandler,
+    bind_params,
+    transpile_circuit,
+)
 
 # list of * contents
 __all__ = [

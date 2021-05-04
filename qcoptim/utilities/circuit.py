@@ -4,9 +4,76 @@ Circuit utilities
 
 import numpy as np
 
+from qiskit.circuit import Measure
 from qiskit.quantum_info import random_unitary
 
 from .core import prefix_to_names
+from .pytket import compile_for_backend
+
+
+def transpile_circuit(
+    circuit,
+    instance,
+    engine,
+    enforce_bijection=False,
+):
+    """
+    Transpile the circuit for a backend passed as a quantum instance, using
+    method specified by engine arg.
+
+    Parameters
+    ----------
+    circuit : qiskit.QuantumCircuit
+        Circuit to transpile
+    instance : qiskit.utils.QuantumInstance obj
+        Instance to use as reference for transpiling
+    engine : str, optional
+        Method to use for transpiling, supported options:
+            -> "instance" : use quantum instance
+            -> "pytket" : use pytket, targeting instance's backend
+    enforce_bijection : boolean, optional
+        If set to True, will raise ValueError if the transpiler map found
+        is not a bijection
+
+    Returns
+    -------
+    qiskit.QuantumCircuit
+        The transpiled circuit
+    """
+
+    # add measurements, these will be used to infer _transpiler_map
+    tmp = circuit.copy()
+    tmp.measure_all()
+
+    # run transpiler with engine
+    if engine == 'instance':
+        t_circ = instance.transpile(tmp)[0]
+    elif engine == 'pytket':
+        t_circ = compile_for_backend(instance.backend, tmp)
+
+    # extract transpiler map from circuit data
+    transpiler_map = {}
+    for instruction in t_circ.data:
+        if isinstance(instruction[0], Measure):
+            qubit = instruction[1][0].index
+            clbit = instruction[2][0].index
+            if (
+                enforce_bijection
+                and (clbit in transpiler_map.keys()
+                     or qubit in transpiler_map.values())
+            ):
+                raise ValueError(
+                    'Transpiler map is not a bijection. Possibly ansatz'
+                    + ' circuit already contained measurements,'
+                    + ' or transpilation reused qubits for final'
+                    + ' measurements.'
+                )
+            transpiler_map[clbit] = qubit
+
+    # remove final measurements
+    t_circ.remove_final_measurements()
+
+    return t_circ, transpiler_map
 
 
 def bind_params(circ, param_values, param_variables, param_name=None):
