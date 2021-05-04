@@ -3,7 +3,6 @@
 
 from .core import (
     pi,
-    BackendManager,
     Batch,
     SafeString,
     safe_string,
@@ -61,6 +60,7 @@ from .core import (
     qTNfromQASM,
     qTNtoQk,
 )
+from .ibmq import BackendManager, make_quantum_instance
 from .stats import bootstrap_resample
 from .circuit import add_random_measurements, RandomMeasurementHandler, bind_params
 
