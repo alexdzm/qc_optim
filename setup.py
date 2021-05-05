@@ -16,7 +16,7 @@ setup(
     author='Frederic Sauvage, Kiran Khosla, Chris Self',
     classifiers=[],
     keywords='',
-    packages=find_packages(exclude=['docs','tests','studies']),
+    packages=find_packages(exclude=['docs', 'tests', 'studies']),
     install_requires=[
         'numpy',
         'GPyOpt',
@@ -25,6 +25,8 @@ setup(
         'qutip',
         'openfermion',
         'pyscf',
+        'pytket',
+        'pytket-qiskit',
     ],
     extras_require={},
     project_urls={},
