@@ -22,6 +22,7 @@ from qcoptim.error_mitigation import (
 )
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
+_TRANSPILERS = ['instance', 'pytket']
 
 
 def test_multiply_cx():
@@ -51,7 +52,7 @@ def test_multiply_cx():
     assert multiply_cx(qc1, 5) == qc5
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 @pytest.mark.parametrize("extrapolation_strategy", ['richardson', 'linear'])
 def test_cx_multiplier_fitter(transpiler, extrapolation_strategy):
     """ """
@@ -118,7 +119,7 @@ def test_cx_multiplier_fitter(transpiler, extrapolation_strategy):
     assert mean + allowed_standard_errors*err > target_value
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_purity_boost_calibrator(transpiler):
     """ """
     num_bootstraps = 1000
@@ -162,7 +163,7 @@ def test_purity_boost_calibrator(transpiler):
     assert calibrator.calibration_circuits == []
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_purity_boost_calibrator_subsampled_rand_meas_handler(transpiler):
     """ """
     num_random = 10
@@ -200,7 +201,7 @@ def test_purity_boost_calibrator_subsampled_rand_meas_handler(transpiler):
     calibrator.process_calibration_results(results)
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_purity_boost_calibrator_shared_rand_meas_handler(transpiler):
     """ """
     num_random = 500
@@ -254,7 +255,7 @@ def test_purity_boost_calibrator_shared_rand_meas_handler(transpiler):
     assert not np.isclose(calibrator1.ptot_std, calibrator2.ptot_std)
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_purity_boost_fitter(transpiler):
     """ """
     num_bootstraps = 1000
@@ -310,7 +311,7 @@ def test_purity_boost_fitter(transpiler):
     assert mean + 4*err > target_value
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_purity_boost_fitter_shared_calibration(transpiler):
     """ """
     num_bootstraps = 1000
@@ -381,7 +382,7 @@ def test_purity_boost_fitter_shared_calibration(transpiler):
     assert mean + 4*err > target_value
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_purity_boost_fitter_sharing_with_crossfid(transpiler):
     """ """
     num_random = 10

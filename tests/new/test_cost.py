@@ -14,9 +14,10 @@ from qcoptim.cost import CrossFidelity
 from qcoptim.utilities import RandomMeasurementHandler, make_quantum_instance
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
+_TRANSPILERS = ['instance', 'pytket']
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_cross_fidelity(transpiler):
     """ """
     num_qubits = 2
@@ -104,7 +105,7 @@ def test_cross_fidelity(transpiler):
         # assert mean + 4*std > target
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_cross_fidelity_subsampling_rand_meas_handler(transpiler):
     """ """
     num_random = 10
@@ -153,7 +154,7 @@ def test_cross_fidelity_subsampling_rand_meas_handler(transpiler):
     _, _ = crossfid.evaluate_cost_and_std(results)
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_cross_fidelity_shared_rand_meas_handler(transpiler):
     """ """
     num_random = 10

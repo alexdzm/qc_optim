@@ -20,6 +20,7 @@ from qcoptim.utilities import (
 from qcoptim.utilities.pytket import compile_for_backend
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
+_TRANSPILERS = ['instance', 'pytket']
 
 
 @pytest.mark.parametrize("device", ['ibmq_santiago', 'ibmq_manhattan'])
@@ -63,7 +64,7 @@ def test_pytket_compile_for_backend(device):
     # want to do that because it'll be very slow
 
 
-@pytest.mark.parametrize("method", ['instance', 'pytket'])
+@pytest.mark.parametrize("method", _TRANSPILERS)
 def test_transpile_circuit(method):
     """ """
     num_qubits = 4
@@ -91,7 +92,10 @@ def test_add_random_measurements():
         new_circs = add_random_measurements(
             circ, 10, active_qubits=active_qubits)
         assert len(new_circs) == 10
+
         for mcirc in new_circs:
+
+            # identify measured qubits
             measured_qubits = set()
             for instruction in mcirc.data:
                 if isinstance(instruction[0], Measure):
@@ -104,7 +108,7 @@ def test_add_random_measurements():
             assert measured_qubits == test_set
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_random_measurement_handler(transpiler):
     """ """
     num_random = 10
@@ -130,6 +134,16 @@ def test_random_measurement_handler(transpiler):
     assert len(circs) == num_random
     assert circs[0].name == 'test_circ0'
 
+    # simple check that __init__ is using `active_qubits` arg of
+    # add_random_measurements as expected, by counting number of measurements
+    for mcirc in circs:
+        # identify measured qubits
+        measured_qubits = []
+        for instruction in mcirc.data:
+            if isinstance(instruction[0], Measure):
+                measured_qubits.append(instruction[1][0].index)
+        assert len(measured_qubits) == 2
+
     # test that no circuits are returned on second request
     assert len(rand_meas_handler.circuits(point)) == 0
 
@@ -148,7 +162,7 @@ def test_random_measurement_handler(transpiler):
     assert circs2[0].name == 'HaarRandom0'
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_random_measurement_handler_trivial_ansatz(transpiler):
     """
     Test special case of ansatz with no parameters
@@ -169,7 +183,7 @@ def test_random_measurement_handler_trivial_ansatz(transpiler):
     assert rand_meas_handler.circuits([]) == []
 
 
-@pytest.mark.parametrize("transpiler", ['instance', 'pytket'])
+@pytest.mark.parametrize("transpiler", _TRANSPILERS)
 def test_random_measurement_handler_2d_point(transpiler):
     """
     Test correct behaviour with array of points
@@ -193,7 +207,7 @@ def test_random_measurement_handler_2d_point(transpiler):
     assert rand_meas_handler.circuits(points) == []
 
     # change one of points, should unlock
-    points[0, :] = 0.
+    points[0, :] = 2
     circs = rand_meas_handler.circuits(points)
     assert len(circs) == num_random*num_points
     assert rand_meas_handler.circuits(points) == []

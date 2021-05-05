@@ -42,6 +42,14 @@ def compile_for_backend(backend, circuit):
         pytket_backend.compile_circuit(pytket_circuit, optimisation_level=2)
         transpiled_circuits.append(tk_to_qiskit(pytket_circuit))
 
+        # preserve exact parameter objs
+        # NOTE: this may be made redundant in a future pytket update
+        updates = {
+            p: next(x for x in circ.parameters if x.name == p.name)
+            for p in transpiled_circuits[-1].parameters
+        }
+        transpiled_circuits[-1].assign_parameters(updates, inplace=True)
+
         # preserve circuit name
         transpiled_circuits[-1].name = circ.name
 
