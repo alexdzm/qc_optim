@@ -2,10 +2,38 @@
 """
 
 from qiskit import QuantumCircuit, Aer
+from qiskit.circuit import Parameter
 from qiskit.utils import QuantumInstance
 
-from qcoptim.ansatz import TrivialAnsatz
-from qcoptim.utilities import make_quantum_instance
+from qcoptim.ansatz import TrivialAnsatz, AnsatzFromCircuit
+from qcoptim.utilities import make_quantum_instance, bind_params
+
+
+def test_ansatz_from_function():
+    """ """
+    circ = QuantumCircuit(4)
+    param_0 = Parameter('R0')
+    param_1 = Parameter('R1')
+    circ.ry(param_1, 0)
+    circ.ry(param_0, 2)
+    circ.cx(0, 1)
+    circ.cx(2, 3)
+    circ.ry(param_1, 1)
+    circ.cx(1, 2)
+
+    ansatz = AnsatzFromCircuit(circ)
+    assert param_0 in ansatz.params
+    assert param_1 in ansatz.params
+
+    # simple test of expected behaviour of binding params
+    circ2 = circ.copy()
+    circ2 = circ2.bind_parameters(dict(zip([param_0, param_1], [0, 1])))
+    assert bind_params(ansatz.circuit, [0, 1], ansatz.params)[0] == circ2
+
+    # ansatz and original circ should be decoupled
+    assert ansatz.circuit == circ
+    circ.measure_all()
+    assert ansatz.circuit != circ
 
 
 def test_ansatz_transpile():

@@ -94,8 +94,8 @@ class BaseAnsatz(AnsatzInterface):
     ):
         """
         strict_transpile : boolean, optional
-            If strict_transpile is True, after the first call to
-            `transpiled_circuit` method following calls will raise an error if
+            If strict_transpile is True -- after the first call to
+            `transpiled_circuit` method, following calls will raise an error if
             they request a different instance or method than was first passed
         """
         self._nb_qubits = num_qubits
@@ -285,60 +285,104 @@ class AnsatzFromFunction(AnsatzInterface):
         return self._nb_params
 
 
-class AnsatzFromCircuit(AnsatzInterface):
+class AnsatzFromCircuit(BaseAnsatz):
     """
-    Returns instance conforming to AnsatzInterface from a single parameterised
-    circut. Parameters are striped and stored as ordered list (instead of a set)
+    """
+
+    def __init__(self, circuit, **kwargs):
+        """ """
+        num_qubits = circuit.num_qubits
+        depth = circuit.depth()
+
+        def _generate_params():
+            """
+            Function to parse parameters out of qiskit circuit. By convention
+            we assume the parameters are named 'Ri' where i is an int, if this
+            is the case the parameters will be ordered by these int's. Else
+            they will have the order they have when returned by
+            circuit.parameters
+            """
+            params = list(circuit.parameters)
+
+            def _reorder_params(params):
+                """
+                Probably useless, but ensures ordred list of params (careful
+                when loading from pkl files)
+                """
+                names = [p.name.split('R')[1] for p in params]
+                param_dict = dict(zip(names, params))
+                reordered = []
+                for idx in range(len(params)):
+                    reordered.append(param_dict[str(idx)])
+                return reordered
+
+            if params[0].name[0] == 'R':
+                test = [p.name[0] == 'R' for p in params]
+                if all(test):
+                    params = _reorder_params(params)
+
+            return params
+
+        self._generate_params = _generate_params
+        self._generate_circuit = lambda x: circuit.copy()
+
+        super().__init__(num_qubits, depth, **kwargs)
+
+
+# class AnsatzFromCircuit(AnsatzInterface):
+#     """
+#     Returns instance conforming to AnsatzInterface from a single parameterised
+#     circut. Parameters are striped and stored as ordered list (instead of a set)
     
-    Parameters:
-    -------------
-    circuit : qk.QuantumCircit instance
-        the quantum circuit that is used from the ansatz"""
-    def __init__(self, circuit):
-        self._nb_params = len(circuit.parameters)
-        self._circuit = circuit
-        self._params = list(circuit.parameters)
-        self._nb_qubits = circuit.num_qubits
-        self._depth = circuit.depth()
+#     Parameters:
+#     -------------
+#     circuit : qk.QuantumCircit instance
+#         the quantum circuit that is used from the ansatz"""
+#     def __init__(self, circuit):
+#         self._nb_params = len(circuit.parameters)
+#         self._circuit = circuit
+#         self._params = list(circuit.parameters)
+#         self._nb_qubits = circuit.num_qubits
+#         self._depth = circuit.depth()
     
-        def _reorder_params(params):
-            """ Probably useless, but ensures ordred list of params (careful when loading from pkl files)"""
-            names = [p.name.split('R')[1] for p in params]
-            di = dict(zip(names, params))
-            reordered = []
-            for ii in range(len(params)):
-                reordered.append(di[str(ii)])
-            return reordered
+#         def _reorder_params(params):
+#             """ Probably useless, but ensures ordred list of params (careful when loading from pkl files)"""
+#             names = [p.name.split('R')[1] for p in params]
+#             di = dict(zip(names, params))
+#             reordered = []
+#             for ii in range(len(params)):
+#                 reordered.append(di[str(ii)])
+#             return reordered
         
-        if self._params[0].name[0] == 'R':
-            test = [p.name[0] == 'R' for p in self._params]
-            if all(test):
-                self._params = _reorder_params(self._params)
-        else:
-            for ii, pp in enumerate(circuit.parameters):
-                pp._name = 'R'+str(ii)
-            self._params = _reorder_params(self._params)
-            print("Heads up: Ordering of circuit parameters may not be consistent with your expectation. Check self.params and self.circuit.draw() to make sure the ordered list looks right.")
+#         if self._params[0].name[0] == 'R':
+#             test = [p.name[0] == 'R' for p in self._params]
+#             if all(test):
+#                 self._params = _reorder_params(self._params)
+#         else:
+#             for ii, pp in enumerate(circuit.parameters):
+#                 pp._name = 'R'+str(ii)
+#             self._params = _reorder_params(self._params)
+#             print("Heads up: Ordering of circuit parameters may not be consistent with your expectation. Check self.params and self.circuit.draw() to make sure the ordered list looks right.")
         
-    @property
-    def depth(self):
-        return self._depth
+#     @property
+#     def depth(self):
+#         return self._depth
 
-    @property
-    def circuit(self):
-        return self._circuit
+#     @property
+#     def circuit(self):
+#         return self._circuit
 
-    @property
-    def params(self):
-        return self._params
+#     @property
+#     def params(self):
+#         return self._params
 
-    @property
-    def nb_qubits(self):
-        return self._nb_qubits
+#     @property
+#     def nb_qubits(self):
+#         return self._nb_qubits
 
-    @property
-    def nb_params(self):
-        return self._nb_params
+#     @property
+#     def nb_params(self):
+#         return self._nb_params
 
 
 class AnsatzFromQasm(AnsatzFromCircuit):
