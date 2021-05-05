@@ -9,73 +9,11 @@ from scipy.optimize import curve_fit
 
 from qiskit import QiskitError
 from qiskit.circuit.library import CXGate
-from qiskit.quantum_info import random_unitary
 
-from .cost import CostInterface, correlation_fixed_U, bind_params
+from .cost import CostInterface
+from .cost.crossfidelity import _auto_cross_correlation_fixed_u
 
-
-def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
-                       return_dist=False):
-    """
-    Calculate the boostrap mean and standard-error of `stat_func` applied to
-    `empirical_distribution` dataset. Optionally return the list of resampled
-    values of the estimator, instead of the standard error.
-
-    Parameters
-    ----------
-    stat_func : Callable
-        Function to evaluate on each bootstrap resample e.g. np.std
-    empirical_distribution : np.ndarray
-        Data to resample
-    num_bootstraps : int
-        Number of bootstrap resamples to perform
-    return_dist : boolean, default False
-        If True, return the list of resampled values of the estimator instead
-        of the standard error (see Returns)
-
-    Returns
-    -------
-    mean_estimate : float
-    standard_error OR resampled_values : float OR list[float]
-        If `return_dist=True` returns list of resampled values, else returns
-        standard error
-    """
-    num_data = empirical_distribution.size
-
-    try:
-        # try to vectorise the bootstrapping, unless the size of the resulting
-        # array will be too large (134217728 is approx the size of a 1GB
-        # float64 array)
-        if num_bootstraps * num_data > 134217728:
-            raise TypeError
-
-        # vectorisation will also fail if `stat_func` does not have an `axis`
-        # kwarg, which will raise a TypeError here
-        resample_indexes = np.random.randint(
-            0, num_data, size=(num_bootstraps, num_data))
-        resampled_estimator = stat_func(
-            empirical_distribution[resample_indexes], axis=1
-            )
-    except TypeError:
-        # more memory safe but much slower
-        resampled_estimator = np.zeros(num_bootstraps)
-        for boot in range(num_bootstraps):
-            resample_indexes = np.random.randint(0, num_data, size=num_data)
-            resampled_estimator[boot] = stat_func(
-                empirical_distribution[resample_indexes])
-
-    if return_dist:
-        # bootstrap estimate and list of resampled values
-        return (
-            np.mean(resampled_estimator),
-            resampled_estimator
-        )
-    # bootstrap estimate and standard deviation
-    return (
-        np.mean(resampled_estimator),
-        np.sqrt(np.mean(resampled_estimator**2)
-                - np.mean(resampled_estimator)**2)
-    )
+from .utilities import bootstrap_resample, RandomMeasurementHandler
 
 
 class BaseCalibrator():
@@ -87,7 +25,7 @@ class BaseCalibrator():
     between multiple fitters, in which case calibration is only performed once.
     """
 
-    def __init__(self, ):
+    def __init__(self):
         """ """
         self._calibration_circuits = self.make_calibration_circuits()
         self._yielded_calibration_circuits = False
@@ -134,16 +72,22 @@ class BaseFitter(CostInterface):
     """
     def __init__(self, cost_obj):
         """
+        Parameters
+        ----------
+        cost_obj : class implementing CostInterface
+            Cost obj to error mitigate for
         """
         self.cost = cost_obj
 
         # for saving last evaluation
         self.last_evaluation = None
 
+
 #
 # Zero-noise extrapolation
 # ------------------------
 #
+
 
 def multiply_cx(circuit, multiplier):
     """
@@ -155,7 +99,8 @@ def multiply_cx(circuit, multiplier):
 
     Parameters
     ----------
-    circuit : qiskit circuit
+    circuit : qiskit.QuantumCircuit
+        Description
     multiplier : int
         Multiplication factor for CNOT gates
 
@@ -189,9 +134,28 @@ def multiply_cx(circuit, multiplier):
 def richardson_extrapolation(stretch_factors, cost_series,
                              cost_series_vars=None):
     """
-    see p22 of arXiv:2011.01382
+    Apply Richardson extrapolation to obtain zero-noise estimate using
+    `cost_series` measurements (with variances `cost_series_vars`) at
+    `stretch_factors` noise amplifications. See e.g. p22 of arXiv:2011.01382
+
+    Parameters
+    ----------
+    stretch_factors : list, numpy.ndarray
+        Noise amplification factors
+    cost_series : list, numpy.ndarray
+        Measurements at different noise amplifications
+    cost_series_vars : list, numpy.ndarray, optional
+        Variances in measurements
+
+    Returns
+    -------
+    float
+        Zero-noise extrapolated mean estimate
+    float
+        Variance in zero-noise extrapolation (None if `cost_series_vars` not
+        supplied)
     """
-    betas = -1*np.ones(len(cost_series))
+    betas = np.ones(len(cost_series))
     for idx1, alpha1 in enumerate(stretch_factors):
         for idx2, alpha2 in enumerate(stretch_factors):
             if not idx1 == idx2:
@@ -202,8 +166,13 @@ def richardson_extrapolation(stretch_factors, cost_series,
         sum([b*a**idx for (a, b) in zip(stretch_factors, betas)])
         for idx, _ in enumerate(stretch_factors)
     ]
-    assert np.isclose(test_array[0], 1.)
-    assert np.all(np.isclose(test_array[1:], np.zeros(len(test_array)-1)))
+    if not (
+        np.all(np.isclose(test_array[1:], np.zeros(len(test_array)-1)))
+        or np.isclose(np.abs(test_array[0]), 1.)
+    ):
+        raise ValueError('Problem with Richardson coefficiants.')
+    if test_array[0] < 0:
+        betas = -1*betas
 
     # get std_err if possible
     std_err = None
@@ -221,6 +190,25 @@ def richardson_extrapolation(stretch_factors, cost_series,
 def linear_extrapolation(stretch_factors, cost_series,
                          cost_series_vars=None):
     """
+    Use linear fit to extrpolate to zero-noise using `cost_series` measurements
+    (with variances `cost_series_vars`) at `stretch_factors` noise
+    amplifications.
+
+    Parameters
+    ----------
+    stretch_factors : list, numpy.ndarray
+        Noise amplification factors
+    cost_series : list, numpy.ndarray
+        Measurements at different noise amplifications
+    cost_series_vars : list, numpy.ndarray, optional
+        Variances in measurements
+
+    Returns
+    -------
+    float
+        Zero-noise extrapolated mean estimate
+    float
+        Variance in zero-noise extrapolation
     """
     def _linear_fit(x, a, b):
         return a + b*x
@@ -233,6 +221,8 @@ def linear_extrapolation(stretch_factors, cost_series,
 
 class CXMultiplierFitter(BaseFitter):
     """
+    Error mitigation fitter that uses CX multiplication to attempt zero-noise
+    extrapolation.
     """
 
     def __init__(
@@ -242,6 +232,16 @@ class CXMultiplierFitter(BaseFitter):
         extrapolation_strategy='richardson',
     ):
         """
+        Parameters
+        ----------
+        cost_obj : class implenting CostInterface
+            Cost obj to apply error mitigation to
+        max_factor : int
+            Largest CX multiplication to go up to, must be odd
+        extrapolation_strategy : str, optional
+            Zero-noise extrapolation approach, supported:
+                'richardson' : Richardson extrapolation
+                'linear' : Use linear fit
         """
         BaseFitter.__init__(self, cost_obj)
 
@@ -269,7 +269,21 @@ class CXMultiplierFitter(BaseFitter):
             raise ValueError(extrapolation_strategy)
 
     def bind_params_to_meas(self, params=None, params_names=None):
-        """ """
+        """
+        Return measurement circuits bound at `params`
+
+        Parameters
+        ----------
+        params : numpy.ndarray, optional
+            Point (1d) or points (2d) to bind circuits at
+        params_names : None, optional
+            Description
+
+        Returns
+        -------
+        list[qiskit.QuantumCircuit]
+            Evaluation circuits
+        """
         bound_circs = self.cost.bind_params_to_meas(
             params=params,
             params_names=params_names
@@ -290,7 +304,23 @@ class CXMultiplierFitter(BaseFitter):
         name='',
         **kwargs,
     ):
-        """ """
+        """
+        Evaluate cost and variance, and apply zero-noise extrapolation to them.
+
+        Parameters
+        ----------
+        results : qiskit.result.Result
+            Qiskit results obj
+        name : str, optional
+            Prefix on results names to find results data
+
+        Returns
+        -------
+        float
+            Zero-noise extrapolated mean estimate
+        float
+            Standard deviation in estimate
+        """
         # see if cost obj has evaluate_cost_and_std method
         std_func = getattr(self.cost, "evaluate_cost_and_std", None)
         if callable(std_func):
@@ -312,7 +342,7 @@ class CXMultiplierFitter(BaseFitter):
         # extrapolate to zero
         mean, std = self.extrapolator(raw_cost_series, raw_cost_vars)
 
-        # save last evaluation (could replace with callback arg)
+        # save last evaluation
         self.last_evaluation = {
             'stretch_factors': self.stretch_factors,
             'raw_cost_series': raw_cost_series,
@@ -329,7 +359,21 @@ class CXMultiplierFitter(BaseFitter):
         name='',
         **kwargs,
     ):
-        """ """
+        """
+        Evaluate cost, and apply zero-noise extrapolation.
+
+        Parameters
+        ----------
+        results : qiskit.result.Result
+            Qiskit results obj
+        name : str, optional
+            Prefix on results names to find results data
+
+        Returns
+        -------
+        float
+            Zero-noise extrapolated mean estimate
+        """
         return self.evaluate_cost_and_std(results, name=name, **kwargs)[0]
 
 
@@ -339,51 +383,7 @@ class CXMultiplierFitter(BaseFitter):
 #
 
 
-def add_random_measurements(circuit, num_rand, seed=None):
-    """
-    Add single qubit measurements in Haar random basis to all the qubits, at
-    the end of the circuit. Used to infer the purity of the output state.
-    Copies the circuit so preserves registers, parameters and circuit name.
-    Independent of what measurements were in the input circuit, all qubits will
-    be measured.
-
-    Parameters
-    ----------
-    circuit : qiskit circuit
-    num_rand : int
-        Number of random unitaries to use
-    seed : int, optional
-        Random number seed for reproducibility
-
-    Returns
-    -------
-    purity_circuits : list of qiskit circuits
-        Copies of input circuit(s), with random unitaries added to the end
-    """
-    rand_state = np.random.default_rng(seed)
-
-    rand_meas_circuits = []
-    for _ in range(num_rand):
-
-        # copy circuit to preserve registers, but remove any final measurements
-        new_circ = circuit.copy()
-        new_circ.remove_final_measurements()
-        # add random single qubit unitaries
-        for qb_idx in range(new_circ.num_qubits):
-            rand_gate = random_unitary(2, seed=rand_state)
-            new_circ.append(rand_gate, [qb_idx])
-        new_circ.measure_all()
-        rand_meas_circuits.append(new_circ)
-
-    return rand_meas_circuits
-
-
-def estimate_purity_fixed_u(
-    results,
-    num_random=None,
-    unitaries_set=None,
-    names=str,
-):
+def estimate_purity_fixed_u(results, num_random, names=str):
     """
     Extract the contributions towards the evaluation of the purity of a quantum
     state using random single qubit measurements (arxiv:1909.01282), resolved
@@ -391,13 +391,10 @@ def estimate_purity_fixed_u(
 
     Parameters
     ----------
-    results :  qiskit.result.Result obj
-        Results to calculate cross-fidelity between
-    num_random : int, *optional*
-    unitaries_set : list of ints, *optional*
-        One of these two args must be supplied, with num_random taking
-        precedence. Used to locate relevant measurement results in the
-        qiksit result objs.
+    results : qiskit.result.Result
+        Results to estimate purity
+    num_random : int
+        Number of random basis used
     names : Callable, optional
         Function that maps index of a random circuit to a name of a circuit in
         the qiskit results object
@@ -405,24 +402,14 @@ def estimate_purity_fixed_u(
     Returns
     -------
     contributions_fixed_u : numpy.ndarray
-        Contributions towards random measurement purity estimate, resolved for
+        Contributions towards random measurement purity estimate, resolved by
         each single random measurement
     """
     nb_qubits = None
 
-    # parse num_random/unitaries_set args
-    if (num_random is None) and (unitaries_set is None):
-        raise ValueError('Please specify either the number of random unitaries'
-              + ' (`num_random`), or the specific indexes of the random'
-              + ' unitaries to include (`unitaries_set`).')
-    if num_random is not None:
-        unitaries_set = range(num_random)
-    else:
-        num_random = len(unitaries_set)
-
     # iterate over the different random unitaries
-    contributions_fixed_u = np.zeros(len(unitaries_set))
-    for uidx in unitaries_set:
+    contributions_fixed_u = np.zeros(num_random)
+    for uidx in range(num_random):
 
         # try to extract matching experiment data
         try:
@@ -432,7 +419,8 @@ def estimate_purity_fixed_u(
                            + ' calculate purity.') from missing_experiments
 
         # normalise counts dict to give empirical probability dists
-        prob_rho_fixed_u = {k: v/sum(countsdict_rho_fixed_u.values())
+        num_measurements = sum(countsdict_rho_fixed_u.values())
+        prob_rho_fixed_u = {k: v/num_measurements
                             for k, v in countsdict_rho_fixed_u.items()}
 
         # use this to check number of qubits has been consistent
@@ -446,8 +434,8 @@ def estimate_purity_fixed_u(
                 + f'{prob_rho_fixed_u.keys()}'
             )
 
-        contributions_fixed_u[uidx] = correlation_fixed_U(prob_rho_fixed_u,
-                                                          prob_rho_fixed_u)
+        contributions_fixed_u[uidx] = _auto_cross_correlation_fixed_u(
+            prob_rho_fixed_u, num_measurements)
 
     # normalisation
     contributions_fixed_u = (2**nb_qubits)*contributions_fixed_u
@@ -457,8 +445,7 @@ def estimate_purity_fixed_u(
 
 def purity_from_random_measurements(
     results,
-    num_random=None,
-    unitaries_set=None,
+    num_random,
     names=str,
     num_bootstraps=1000,
 ):
@@ -469,13 +456,10 @@ def purity_from_random_measurements(
 
     Parameters
     ----------
-    results :  qiskit.result.Result obj
+    results : qiskit.result.Result
         Results to calculate cross-fidelity between
-    num_random : int, *optional*
-    unitaries_set : list of ints, *optional*
-        One of these two args must be supplied, with num_random taking
-        precedence. Used to locate relevant measurement results in the
-        qiksit result objs.
+    num_random : int
+        Number of random measurement basis used.
     names : Callable, optional
         Function that maps index of a random circuit to a name of a circuit in
         the qiskit results object
@@ -484,14 +468,13 @@ def purity_from_random_measurements(
 
     Returns
     -------
-    tr_rho_2 : float
-    tr_rho_2_err : float
+    float
+        Mean of purity estimate
+    float
+        Standard error in estimate
     """
     contributions_fixed_u = estimate_purity_fixed_u(
-        results,
-        num_random=num_random,
-        unitaries_set=unitaries_set,
-        names=names,
+        results, num_random, names=names,
     )
 
     # bootstrap estimate and standard deviation
@@ -500,26 +483,66 @@ def purity_from_random_measurements(
 
 class PurityBoostCalibrator(BaseCalibrator):
     """
-    Calibration class for purity boost error-mitigation
+    Calibration class for purity boost error-mitigation.
     """
 
     def __init__(
         self,
         ansatz,
-        instance,
-        num_random,
+        instance=None,
+        num_random=None,
         seed=None,
         num_bootstraps=1000,
         calibration_point=None,
+        circ_name=None,
+        transpiler='instance',
+        rand_meas_handler=None,
     ):
-        """ """
-        self.ansatz = ansatz
-        self.instance = instance
-        self.num_random = num_random
-        self.seed = seed
+        """
+        Parameters
+        ----------
+        ansatz : class implementing ansatz interface
+            Ansatz obj
+        instance : qiskit.utils.QuantumInstance, optional
+            Quantum instance to use
+        num_random : int
+            Number of random basis to generate
+        seed : int, optional
+            Seed for generating random basis
+        num_bootstraps : int, optional
+            Number of bootstrap resamples used to estimate uncertainty in ptot
+        calibration_point : None, optional
+            Parameter point (w/r/t/ ansatz parameters) to calibrate at
+        circ_name : callable, optional
+            Function used to name circuits, should have signature `int -> str`
+            and preferably should prefix the int, e.g. return something like
+            'some-str'+str(int)`
+        transpiler : str, optional
+            Choose how to transpile circuits, current options are:
+                'instance' : use quantum instance
+                'pytket' : use pytket compiler
+        rand_meas_handler : None, optional
+            Can pass an already initialised RandomMeasurementHandler obj to use
+            to generate random basis circuits internally. This can be shared
+            with other users to avoid repeated random characterisation of the
+            same state.
+
+            Will raise ValueError if rand_meas_handler's ansatz or instance are
+            different from the args, unless `ansatz=None` and `instance=None`.
+
+            `rand_meas_handler.num_random` can be different from num_random as
+            long as num_random is smaller.
+        """
         self.num_bootstraps = num_bootstraps
 
-        if not calibration_point:
+        # set default for num_random if passed as None
+        if num_random is None:
+            if rand_meas_handler is None:
+                num_random = 500
+            else:
+                num_random = rand_meas_handler.num_random
+
+        if calibration_point is None:
             # random vector with elements in [0,2\pi]
             self.calibration_point = np.random.random(size=len(ansatz.params))
             self.calibration_point = 2. * np.pi * self.calibration_point
@@ -530,50 +553,95 @@ class PurityBoostCalibrator(BaseCalibrator):
         else:
             self.calibration_point = calibration_point
 
+        # this is to match others users of RandomMeasurementHandler,
+        # e.g. CrossFidelity class, which assume 2d parameter points
+        self.calibration_point = np.atleast_2d(self.calibration_point)
+
         # have not yet estimated ptot
         self.ptot = None
         self.ptot_std = None
 
-        # function used to name circuits
-        self._circ_name = lambda idx: 'ptot-cal-' + f'{idx}'
+        # default circ names
+        if circ_name is None:
+            def circ_name(idx):
+                return 'ptot-cal'+f'{idx}'
+
+        # make internal RandomMeasurementHandler if none passed
+        if rand_meas_handler is None:
+            self._rand_meas_handler = RandomMeasurementHandler(
+                ansatz,
+                instance,
+                num_random,
+                seed=seed,
+                circ_name=circ_name,
+                transpiler=transpiler,
+            )
+        else:
+            if ansatz is not None and ansatz != rand_meas_handler.ansatz:
+                raise ValueError('Ansatz passed different from'
+                                 + ' rand_meas_handler obj.')
+            if instance is not None and instance != rand_meas_handler.instance:
+                raise ValueError('Quantum instance passed different from'
+                                 + ' rand_meas_handler obj.')
+            if num_random > rand_meas_handler.num_random:
+                raise ValueError('num_random larger than num_random of'
+                                 + ' rand_meas_handler obj.')
+            self._rand_meas_handler = rand_meas_handler
+        self.num_random = num_random
 
         # call base calibration init
         BaseCalibrator.__init__(self)
 
     def make_calibration_circuits(self):
-        """ """
-        bound_ansatz = bind_params(
-            self.ansatz.circuit,
-            self.calibration_point,
-            self.ansatz.params
-        )[0]
-        calibration_circuits = add_random_measurements(
-            bound_ansatz,
-            self.num_random,
-            seed=self.seed
-        )
+        """
+        Generating circuits defered to a RandomMeasurementHandler in this class
+        """
+        return []
 
-        # name circuits so they can be found
-        for idx, circ in enumerate(calibration_circuits):
-            circ.name = self._circ_name(idx)
+    @property
+    def seed(self):
+        return self._rand_meas_handler.seed
 
-        # transpile with instance ready for execution
-        t_calibration_circuits = self.instance.transpile(calibration_circuits)
+    @property
+    def ansatz(self):
+        return self._rand_meas_handler.ansatz
 
-        return t_calibration_circuits
+    @property
+    def instance(self):
+        return self._rand_meas_handler.instance
+
+    @property
+    def calibration_circuits(self):
+        """
+        Yield calibration circuits, using RandomMeasurementHandler's locking
+        """
+        return self._rand_meas_handler.circuits(self.calibration_point)
+
+    def reset(self):
+        """
+        Lose memory of waiting for calibration results, and having completed
+        calibration
+        """
+        self._rand_meas_handler.reset()
+        self.calibrated = False
 
     def process_calibration_results(self, results, name=None):
-        """ """
+        """
+        Parameters
+        ----------
+        results : qiskit.result.Result
+            Results to use
+        name : None, optional
+            Extra prefix string to use to select from results
+        """
         if name is not None:
             def _circ_name(idx):
-                return name + self._circ_name(idx)
+                return name + self._rand_meas_handler.circ_name(idx)
         else:
-            _circ_name = self._circ_name
+            _circ_name = self._rand_meas_handler.circ_name
 
         contributions_fixed_u = estimate_purity_fixed_u(
-            results,
-            num_random=self.num_random,
-            names=_circ_name,
+            results, self.num_random, names=_circ_name,
         )
 
         def compute_ptot(data, axis=0):
@@ -588,17 +656,15 @@ class PurityBoostCalibrator(BaseCalibrator):
             self.num_bootstraps,
         )
 
+        self._rand_meas_handler.reset()
         self.calibrated = True
-        self._yielded_calibration_circuits = False
 
     @property
     def ptot(self):
-        """ Getter for ptot attribute """
         return self._ptot
 
     @ptot.setter
     def ptot(self, ptot):
-        """ Setter for ptot attribute """
         if ptot:
             if ptot < 0:
                 self._ptot = 0.
@@ -613,23 +679,44 @@ class PurityBoostCalibrator(BaseCalibrator):
 
 class PurityBoostFitter(BaseFitter):
     """
-    arXiv:2101.01690
+    Error mitigation fitter that uses a purity boosting technique
+    (arXiv:2101.01690).
 
-    Currently only works for cost objects corresponding to the expectation
-    values of traceless operators.
+    ***Currently only works for cost objects corresponding to the expectation
+    values of traceless operators.***
     """
 
     def __init__(
         self,
         cost_obj,
-        calibrator=None,
         num_random=500,
         seed=None,
         num_bootstraps=1000,
         calibration_point=None,
+        calibrator=None,
     ):
         """
+        Parameters
+        ----------
+        cost_obj : class implenting CostInterface
+            Cost obj to apply error mitigation to
+        num_random : int
+            Number of random basis to generate
+        seed : int, optional
+            Seed for generating random basis
+        num_bootstraps : int, optional
+            Number of bootstrap resamples used to estimate uncertainty
+        calibration_point : None, optional
+            Parameter point (w/r/t/ ansatz parameters) to calibrate at
+        calibrator : None, optional
+            Can pass an already initialised Calibrator obj to use. This
+            calibrator could have already been calibrated. Or, it may shared
+            with other users to avoid repeated random characterisation of the
+            same state.
+            Will raise ValueError if calibrator's ansatz or instance are
+            different from the cost_obj's.
         """
+
         BaseFitter.__init__(self, cost_obj)
 
         if calibrator is None:
@@ -643,10 +730,29 @@ class PurityBoostFitter(BaseFitter):
                 calibration_point=calibration_point,
             )
         else:
+            if self.cost.ansatz != calibrator.ansatz:
+                raise ValueError('Cost and calibrator have different ansatz.')
+            if self.cost.instance != calibrator.instance:
+                raise ValueError('Cost and calibrator have different quantum'
+                                 + ' instance.')
             self.calibrator = calibrator
 
     def bind_params_to_meas(self, params=None, params_names=None):
-        """ """
+        """
+        Return measurement circuits bound at `params`
+
+        Parameters
+        ----------
+        params : numpy.ndarray, optional
+            Point (1d) or points (2d) to bind circuits at
+        params_names : None, optional
+            Description
+
+        Returns
+        -------
+        list[qiskit.QuantumCircuit]
+            Evaluation circuits
+        """
         bound_circs = self.cost.bind_params_to_meas(
             params=params,
             params_names=params_names
@@ -661,9 +767,29 @@ class PurityBoostFitter(BaseFitter):
         self,
         results,
         name='',
+        calibration_name=None,
         **kwargs,
     ):
-        """ """
+        """
+        Evaluate cost and variance, and apply purity boosting to them.
+
+        Parameters
+        ----------
+        results : qiskit.result.Result
+            Qiskit results obj
+        name : str, optional
+            Prefix on results names to find results data
+
+        Returns
+        -------
+        float
+            Purity boosted mean estimate
+        float
+            Standard deviation in estimate
+        """
+        if calibration_name is None:
+            calibration_name = name
+
         std_func = getattr(self.cost, "evaluate_cost_and_std", None)
         if callable(std_func):
             raw_cost, raw_std = std_func(results, name=name, **kwargs)
@@ -672,7 +798,8 @@ class PurityBoostFitter(BaseFitter):
             raw_cost = self.cost.evaluate_cost(results, name=name, **kwargs)
 
         if not self.calibrator.calibrated:
-            self.calibrator.process_calibration_results(results, name=name)
+            self.calibrator.process_calibration_results(
+                results, name=calibration_name)
 
         mean = raw_cost / (1 - self.calibrator.ptot)
         var = (
@@ -689,6 +816,8 @@ class PurityBoostFitter(BaseFitter):
             'raw_std': raw_std,
             'pboost_mean': mean,
             'pboost_std': np.sqrt(var),
+            'ptot': self.calibrator.ptot,
+            'ptot_std': self.calibrator.ptot_std,
         }
 
         return mean, np.sqrt(var)
@@ -697,7 +826,24 @@ class PurityBoostFitter(BaseFitter):
         self,
         results,
         name='',
+        calibration_name=None,
         **kwargs,
     ):
-        """ """
-        return self.evaluate_cost_and_std(results, name=name, **kwargs)[0]
+        """
+        Evaluate cost, and apply purity boosting.
+
+        Parameters
+        ----------
+        results : qiskit.result.Result
+            Qiskit results obj
+        name : str, optional
+            Prefix on results names to find results data
+
+        Returns
+        -------
+        float
+            Purity boosted mean estimate
+        """
+        return self.evaluate_cost_and_std(
+            results, name=name, calibration_name=calibration_name, **kwargs
+        )[0]

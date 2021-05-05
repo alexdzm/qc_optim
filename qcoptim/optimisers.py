@@ -448,7 +448,7 @@ class ParallelRunner():
         if len(optim_args_list) == 1:
             optim_args_list = optim_args_list*len(self.cost_objs)
         
-        if type(optimizer_args) == ut.NoneType:
+        if optimizer_args is None:
             return optim_list
         else:
             return [opt(arg) for opt, arg in zip(optim_list, optim_args_list)]

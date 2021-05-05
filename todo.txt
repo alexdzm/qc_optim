@@ -1,0 +1,33 @@
+
+Big TODO's
+----------
+
+-> all
+	-> clean and simplify
+	-> fix PEP8 formatting
+	-> write tests
+	-> add missing docstrings
+
+-> ansatz
+	-> remove ansatz class
+	-> turn all of the ansatz subclasses into functions producing parameterised qiskit QuantumCircuits
+-> cost
+	-> simplify interface/class inheritance structure
+		-> convert CostInterface into a BaseCost class
+		-> combine current `Cost` class and new BaseCost class
+	-> possibly break cost.py into multiple files within a `cost` module subfolder
+	-> add `evaluate_cost_and_std` to all cost classes?
+-> utils
+	-> break utilities.py into multiple files within a 'utilites' module subfolder
+
+PROPOSALS
+---------
+
+-> cost
+	-> rename `bind_params_to_meas` function something like, `evaluation_circuits`
+
+CURRENT TODO's
+--------------
+
+[chris 16/04] -> write tests for CrossFidelity
+			  -> implement some sort of blocking/shared HaarRandom sampler
