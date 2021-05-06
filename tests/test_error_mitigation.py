@@ -442,7 +442,7 @@ def test_purity_boost_fitter_sharing_with_crossfid(transpiler):
     _ = crossfid.evaluate_cost(results)
 
 
-def test_multi_errmit_strat_handler():
+def test_multi_strategy_fitter():
     """ """
 
     ansatz = RandomAnsatz(2, 2, strict_transpile=True)
@@ -486,7 +486,7 @@ def test_multi_errmit_strat_handler():
     assert len(stds) == len(strategies)
 
 
-def test_multi_errmit_strat_handler_reject_duplicates():
+def test_multi_strategy_fitter_reject_duplicates():
     """ """
     ansatz = RandomAnsatz(2, 2)
     instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
