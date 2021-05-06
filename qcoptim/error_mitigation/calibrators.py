@@ -343,7 +343,7 @@ class PurityBoostCalibrator(BaseCalibrator):
 
     @ptot.setter
     def ptot(self, ptot):
-        if ptot:
+        if ptot is not None:
             if ptot < 0:
                 self._ptot = 0.
             elif ptot > 1.:

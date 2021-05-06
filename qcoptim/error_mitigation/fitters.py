@@ -2,7 +2,7 @@
 """
 
 import numpy as np
-from scipy.optimize import curve_fit
+from scipy import linalg
 
 from qiskit.circuit.library import CXGate
 
@@ -159,13 +159,28 @@ def linear_extrapolation(stretch_factors, cost_series,
     float
         Variance in zero-noise extrapolation
     """
-    def _linear_fit(x, a, b):
-        return a + b*x
 
-    popt, pcov = curve_fit(_linear_fit, stretch_factors, cost_series,
-                           sigma=np.sqrt(cost_series_vars))
+    # want to ensure that the variances aren't too different, use the condition
+    # that at most one of them can be more than 10% away from the mean. If this
+    # isn't obeyed we will use the max variance in the final error estimate,
+    # else use the mean
+    _spread = np.abs(
+        (cost_series_vars - np.mean(cost_series_vars))
+        / np.mean(cost_series_vars)
+    )
+    if np.count_nonzero(_spread > 0.1) > 1:
+        sigma_squared = np.max(cost_series_vars)
+    else:
+        sigma_squared = np.mean(cost_series_vars)
 
-    return popt[0], np.sqrt(pcov[0, 0])
+    # in this simple case do the linear regression by hand
+    Xmat = np.array([np.ones(len(stretch_factors)), stretch_factors]).T
+    inv_XtX = linalg.inv(Xmat.T @ Xmat)
+
+    betas = inv_XtX @ Xmat.T @ np.array([cost_series]).T
+    var_betas = inv_XtX * sigma_squared
+
+    return betas[0], np.sqrt(var_betas[0, 0])
 
 
 class CXMultiplierFitter(BaseFitter):
