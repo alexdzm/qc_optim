@@ -19,6 +19,7 @@ from qcoptim.error_mitigation import (
     CXMultiplierFitter,
     PurityBoostCalibrator,
     PurityBoostFitter,
+    MultiStrategyFitter,
 )
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
@@ -439,3 +440,69 @@ def test_purity_boost_fitter_sharing_with_crossfid(transpiler):
     assert fitter.calibrator.calibrated
     crossfid.comparison_results = results
     _ = crossfid.evaluate_cost(results)
+
+
+def test_multi_errmit_strat_handler():
+    """ """
+
+    ansatz = RandomAnsatz(2, 2, strict_transpile=True)
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    wpo = WeightedPauliOperator([
+        (1., Pauli('ZZ')),
+        (1., Pauli('XX')),
+    ])
+    cost = CostWPO(ansatz, instance, wpo)
+    point = np.ones(ansatz.nb_params)
+
+    strategies = [
+        'zne,richardson,5',
+        'zne,richardson,7',
+        'pb,10,1000',
+        'pb,20,1000',
+        'pb,30,1000',
+        'zne,linear,5',
+        'none',
+    ]
+    strat_handler = MultiStrategyFitter(
+        cost, strategies, pb_calibration_point=point)
+
+    # type test on internal fitters
+    assert isinstance(strat_handler.fitters[0], CXMultiplierFitter)
+    assert isinstance(strat_handler.fitters[1], CXMultiplierFitter)
+    assert isinstance(strat_handler.fitters[2], PurityBoostFitter)
+    assert isinstance(strat_handler.fitters[3], PurityBoostFitter)
+    assert isinstance(strat_handler.fitters[4], PurityBoostFitter)
+    assert isinstance(strat_handler.fitters[5], CXMultiplierFitter)
+    assert isinstance(strat_handler.fitters[6], CostWPO)
+
+    # test number of circuits yielded
+    circs = strat_handler.bind_params_to_meas(point)
+    assert len(circs) == 2*3 + 2*4 + 2 + 2 + 2 + 30 + 2*3 + 2
+
+    # test can evaluate
+    results = instance.execute(circs)
+    means, stds = strat_handler.evaluate_cost_and_std(results)
+    assert len(means) == len(strategies)
+    assert len(stds) == len(strategies)
+
+
+def test_multi_errmit_strat_handler_reject_duplicates():
+    """ """
+    ansatz = RandomAnsatz(2, 2)
+    instance = QuantumInstance(Aer.get_backend('qasm_simulator'))
+    wpo = WeightedPauliOperator([
+        (1., Pauli('ZZ')),
+        (1., Pauli('XX')),
+    ])
+    cost = CostWPO(ansatz, instance, wpo)
+
+    strategies = [
+        'zne,richardson,5',
+        'zne,richardson,5',
+    ]
+    try:
+        MultiStrategyFitter(cost, strategies)
+        assert False, 'should have raised error'
+    except ValueError:
+        pass
+
