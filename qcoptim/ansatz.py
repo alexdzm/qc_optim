@@ -324,7 +324,7 @@ class AnsatzFromCircuit(BaseAnsatz):
             return params
 
         self._generate_params = _generate_params
-        self._generate_circuit = lambda x: circuit.copy()
+        self._generate_circuit = lambda: circuit.copy()
 
         super().__init__(num_qubits, depth, **kwargs)
 

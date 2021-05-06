@@ -192,10 +192,6 @@ class CostWPO(CostInterface):
             statevector_mode=self.instance.is_statevector,
             circuit_name_prefix=name
             )
-        self.last_evaluation = {
-            'mean': mean,
-            'std': std,
-        }
 
         if real_part:
             if (
@@ -204,7 +200,13 @@ class CostWPO(CostInterface):
             ):
                 print('Warning, `evaluate_cost_and_std` throwing away non-zero'
                       + ' imaginary part.', file=sys.stderr)
-            return np.real(mean), np.real(std)
+            mean = np.real(mean)
+            std = np.real(std)
+
+        self.last_evaluation = {
+            'mean': mean,
+            'std': std,
+        }
         return mean, std
 
     def evaluate_cost(
@@ -228,13 +230,10 @@ class CostWPO(CostInterface):
         """
         mean, _ = self.evaluate_cost_and_std(
             results=results,
-            name=name
+            name=name,
+            real_part=real_part,
+            **kwargs,
             )
-        if real_part:
-            if not np.isclose(np.imag(mean), 0.):
-                print('Warning, `evaluate_cost` throwing away non-zero'
-                      + ' imaginary part.', file=sys.stderr)
-            return np.real(mean)
         return mean
 
     @property
