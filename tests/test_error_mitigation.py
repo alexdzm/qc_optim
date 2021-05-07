@@ -59,9 +59,6 @@ def test_cx_multiplier_fitter(transpiler, extrapolation_strategy):
     """ """
     max_factor = 7
     allowed_standard_errors = 4
-    if extrapolation_strategy == 'linear':
-        # linear typically performs poorly
-        allowed_standard_errors = 10
 
     wpo = WeightedPauliOperator([
         (1., Pauli.from_label('ZZ')),

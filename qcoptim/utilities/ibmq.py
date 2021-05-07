@@ -33,6 +33,9 @@ FREE_LIST_DEVICES = [
 
 def make_quantum_instance(
     backend_name,
+    hub='partner-samsung',
+    group='internal',
+    project='imperial',
     measurement_error_mitigation=1,
     nb_shots=8192,
     cals_matrix_refresh_period=30,
@@ -50,6 +53,9 @@ def make_quantum_instance(
     Parameters
     ----------
     backend_name : str
+    hub : str, optional
+    group : str, optional
+    project : str, optional
     measurement_error_mitigation : int (0 or 1)
     nb_shots : int
     cals_matrix_refresh_period : int
@@ -86,9 +92,9 @@ def make_quantum_instance(
         IBMQ.load_account()
         if backend_name in premium_devices:
             provider = IBMQ.get_provider(
-                hub='partner-samsung',
-                group='internal',
-                project='imperial'
+                hub=hub,
+                group=group,
+                project=project,
             )
         else:
             provider = IBMQ.get_provider(group='open')

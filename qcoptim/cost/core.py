@@ -39,7 +39,6 @@ from ..utilities import (
     quick_instance,
     gen_meas_circuits,
     pauli_correlation,
-    convert_wpo_and_openfermion,
     convert_to_settings_and_weights,
     bind_params,
 )
@@ -916,7 +915,7 @@ class StateFidelityCost(Cost):
         quantum instance that transpile the measurement circuits.
     """
     def __init__(self, state, ansatz, instance=None, **args):
-        from . import pauli_decomposition
+        from .. import pauli_decomposition
         weights, settings = pauli_decomposition.weights_and_settings(state, ansatz.nb_qubits)
         self._base_weights = weights
         self._base_settings = settings
@@ -970,6 +969,7 @@ class ChemistryCost(Cost):
         TODO: Work out WTF happens to larger atoms and freezing out orbitals
         """
         print('warning - this has not been debugged for sharing yet')
+        from ..utilities.chemistry import convert_wpo_and_openfermion
         from openfermion import (
             MolecularData,
             bravyi_kitaev, 

@@ -18,13 +18,10 @@ setup(
     keywords='',
     packages=find_packages(exclude=['docs', 'tests', 'studies']),
     install_requires=[
-        'numpy',
         'GPyOpt',
         'qiskit',
         'quimb',
         'qutip',
-        'openfermion',
-        'pyscf',
         'pytket',
         'pytket-qiskit',
     ],
