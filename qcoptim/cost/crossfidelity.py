@@ -2,7 +2,7 @@
 Cross-fidelity cost classes and functions
 """
 
-import sys
+import warnings
 
 import numpy as np
 import scipy as sp
@@ -30,6 +30,7 @@ class CrossFidelity(CostInterface):
         nb_random=None,
         seed=None,
         comparison_results=None,
+        num_bootstraps=1000,
         prefixA='CrossFid',
         prefixB='CrossFid',
         transpiler='instance',
@@ -56,6 +57,9 @@ class CrossFidelity(CostInterface):
             Ideally this would have been tagged with CrossFidelity
             metadata using this classes `tag_results_metadata` method.
             Can also accept a qiskit results obj
+        num_bootstraps : int, optional
+            Number of bootstrap resamples to use to estimate the standard error
+            w/r/t/ the random unitaries
         prefixA : str, optional
             Prefix string to use on circuits generate to characterise A system.
         prefixB : str, optional
@@ -78,6 +82,7 @@ class CrossFidelity(CostInterface):
             long as nb_random is smaller.
         """
         self._prefixB = prefixB
+        self._num_bootstraps = num_bootstraps
 
         # set default for nb_random if passed as None
         if nb_random is None:
@@ -151,13 +156,13 @@ class CrossFidelity(CostInterface):
             try:
                 comparison_metadata = results['crossfidelity_metadata']
             except KeyError:
-                print(
+                warnings.warn(
                     'Warning, input results dictionary does not contain'
                     + ' crossfidelity_metadata and so we cannot confirm that'
                     + ' the results are compatible. If the input results'
                     + ' object was collecting by this class consider using'
                     + ' the tag_results_metadata method to add the'
-                    + ' crossfidelity_metadata.', file=sys.stderr
+                    + ' crossfidelity_metadata.'
                 )
             if comparison_metadata is not None:
                 if self.seed != comparison_metadata['seed']:
@@ -184,7 +189,9 @@ class CrossFidelity(CostInterface):
                     new_counts[ckey] = cval
                 val['data']['counts'] = new_counts
 
-        self._comparison_results = results
+            # convert comparison_results back to qiskit results obj, so we can
+            # use `get_counts` method
+            self._comparison_results = Result.from_dict(results)
 
     def tag_results_metadata(self, results):
         """
@@ -313,10 +320,6 @@ class CrossFidelity(CostInterface):
             raise ValueError('No comparison results set has been passed to'
                              + ' CrossFidelity obj.')
 
-        # convert comparison_results back to qiskit results obj, so we can
-        # use `get_counts` method
-        comparison_results = Result.from_dict(self._comparison_results)
-
         # circuit naming functions
         def circ_namesA(idx):
             return name + self._rand_meas_handler.circ_name(idx)
@@ -326,19 +329,19 @@ class CrossFidelity(CostInterface):
         (dist_tr_rhoA_rhoB,
          dist_tr_rhoA_2,
          dist_tr_rhoB_2) = _crossfidelity_fixed_u(
-         results, comparison_results, self.nb_random,
+         results, self._comparison_results, self.nb_random,
          circ_namesA=circ_namesA, circ_namesB=circ_namesB,
         )
 
         # bootstrap resample for means and std-errs
         tr_rhoA_rhoB, tr_rhoA_rhoB_err = bootstrap_resample(
-            np.mean, dist_tr_rhoA_rhoB, 1000,
+            np.mean, dist_tr_rhoA_rhoB, self._num_bootstraps,
         )
         tr_rhoA_2, tr_rhoA_2_err = bootstrap_resample(
-            np.mean, dist_tr_rhoA_2, 1000,
+            np.mean, dist_tr_rhoA_2, self._num_bootstraps,
         )
         tr_rhoB_2, tr_rhoB_2_err = bootstrap_resample(
-            np.mean, dist_tr_rhoB_2, 1000,
+            np.mean, dist_tr_rhoB_2, self._num_bootstraps,
         )
 
         # divide by largest
