@@ -258,6 +258,7 @@ class CrossFidelity(CostInterface):
         self,
         results,
         name='',
+        vectorise=True,
         **kwargs
     ):
         """
@@ -280,12 +281,14 @@ class CrossFidelity(CostInterface):
         float
             Evaluated cross-fidelity
         """
-        return self.evaluate_cost_and_std(results, name=name, **kwargs)[0]
+        return self.evaluate_cost_and_std(
+            results, name=name, vectorise=vectorise, **kwargs)[0]
 
     def evaluate_cost_and_std(
         self,
         results,
         name='',
+        vectorise=True,
         **kwargs
     ):
         """
@@ -331,6 +334,7 @@ class CrossFidelity(CostInterface):
          dist_tr_rhoB_2) = _crossfidelity_fixed_u(
          results, self._comparison_results, self.nb_random,
          circ_namesA=circ_namesA, circ_namesB=circ_namesB,
+         vectorise=vectorise,
         )
 
         # bootstrap resample for means and std-errs
@@ -379,6 +383,7 @@ def _crossfidelity_fixed_u(
     nb_random,
     circ_namesA=None,
     circ_namesB=None,
+    vectorise=False,
 ):
     """
     Function to calculate the offline CrossFidelity between two quantum states
@@ -416,6 +421,14 @@ def _crossfidelity_fixed_u(
         def circ_namesB(idx):
             return 'CrossFid' + f'{idx}'
 
+    # make results access maps for speed
+    resultsA_access_map = {
+        res.header.name: idx for idx, res in enumerate(resultsA.results)
+    }
+    resultsB_access_map = {
+        res.header.name: idx for idx, res in enumerate(resultsB.results)
+    }
+
     # iterate over the different random unitaries
     tr_rhoA_rhoB = np.zeros(nb_random)
     tr_rhoA_2 = np.zeros(nb_random)
@@ -424,14 +437,16 @@ def _crossfidelity_fixed_u(
 
         # try to extract matching experiment data
         try:
-            countsdict_rhoA_fixedU = resultsA.get_counts(circ_namesA(uidx))
-        except QiskitError as missing_exp:
+            countsdict_rhoA_fixedU = resultsA.get_counts(
+                resultsA_access_map[circ_namesA(uidx)])
+        except KeyError as missing_exp:
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
         try:
-            countsdict_rhoB_fixedU = resultsB.get_counts(circ_namesB(uidx))
-        except QiskitError as missing_exp:
+            countsdict_rhoB_fixedU = resultsB.get_counts(
+                resultsB_access_map[circ_namesB(uidx)])
+        except KeyError as missing_exp:
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
@@ -463,11 +478,18 @@ def _crossfidelity_fixed_u(
                 + f'{P_rhoB_fixedU.keys()}'
             )
 
-        tr_rhoA_rhoB[uidx] = _cross_correlation_fixed_u(
+        if vectorise:
+            cross_func = _vectorised_cross_correlation_fixed_u
+            auto_func = _vectorised_auto_cross_correlation_fixed_u
+        else:
+            cross_func = _cross_correlation_fixed_u
+            auto_func = _auto_cross_correlation_fixed_u
+
+        tr_rhoA_rhoB[uidx] = cross_func(
             P_rhoA_fixedU, P_rhoB_fixedU)
-        tr_rhoA_2[uidx] = _auto_cross_correlation_fixed_u(
+        tr_rhoA_2[uidx] = auto_func(
             P_rhoA_fixedU, num_measurements_A)
-        tr_rhoB_2[uidx] = _auto_cross_correlation_fixed_u(
+        tr_rhoB_2[uidx] = auto_func(
             P_rhoB_fixedU, num_measurements_B)
 
     # normalisations
@@ -561,3 +583,85 @@ def _auto_cross_correlation_fixed_u(P_1, num_measurements):
                 )
 
     return corr_fixed_u
+
+
+def _make_hamming_distance_array(binary_strings_a, binary_strings_b):
+    """ """
+    return np.count_nonzero(
+        (
+            np.array([list(sA) for sA in binary_strings_a])[:, np.newaxis]
+            != np.array([list(sB) for sB in binary_strings_b])[np.newaxis, :]
+        ),
+        axis=2,
+    )
+
+
+def _vectorised_cross_correlation_fixed_u(P_1, P_2):
+    """
+    Carries out the inner loop calculation of the Cross-Fidelity. In
+    contrast to the paper, arxiv:1909.01282, it makes sense for us to
+    make the sum over sA and sA' the inner loop. So this computes the
+    sum over sA and sA' for fixed random U.
+
+    Parameters
+    ----------
+    P_1 : dict (normalised counts dictionary)
+        The empirical distribution for the measurments on qubit 1
+        P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
+        where U is a fixed, randomly chosen unitary, and s_A is all possible
+        binary strings in the computational basis
+    P_2 : dict (normalised counts dictionary)
+        Same for qubit 2.
+
+    Returns
+    -------
+    float
+        Evaluation of the inner sum of the cross-fidelity
+    """
+    hamming_distances = _make_hamming_distance_array(list(P_1.keys()),
+                                                     list(P_2.keys()))
+
+    return np.sum(
+        (-2.) ** (-1*hamming_distances)
+        * np.array(list(P_1.values()))[:, np.newaxis]
+        * np.array(list(P_2.values()))[np.newaxis, :]
+    )
+
+
+def _vectorised_auto_cross_correlation_fixed_u(P_1, num_measurements):
+    """
+    Carries out the inner loop purity calculation of arxiv:1909.01282 and
+    arxiv:1801.00999, etc. In contrast to the two-source calculation above
+    (_cross_correlation_fixed_u), in this case there is only one measured
+    distribution of bit string probabilities so we need to take additional care
+    to avoid estimator bias when computing cross-correlations.
+
+    Parameters
+    ----------
+    P_1 : dict (normalised counts dictionary)
+        The empirical distribution for the measurments on qubit 1
+        P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
+        where U is a fixed, randomly chosen unitary, and s_A is all possible
+        binary strings in the computational basis
+
+    Returns
+    -------
+    float
+        Evaluation of the inner sum of the cross-fidelity
+    """
+    hamming_distances = _make_hamming_distance_array(list(P_1.keys()),
+                                                     list(P_1.keys()))
+
+    vectorised_sum = (
+        (-2.) ** (-1*hamming_distances)
+        * np.array(list(P_1.values()))[:, np.newaxis]
+        * np.array(list(P_1.values()))[np.newaxis, :]
+    )
+
+    # correct bias
+    vectorised_sum = (
+        vectorised_sum * num_measurements
+        - np.diag(np.array(list(P_1.values())))
+    ) / (num_measurements - 1)
+
+    return np.sum(vectorised_sum)
