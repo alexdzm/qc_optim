@@ -2,10 +2,11 @@
 """
 
 import numpy as np
+from numpy.random import default_rng
 
 
 def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
-                       return_dist=False):
+                       return_dist=False, random_seed=None, ):
     """
     Calculate the boostrap mean and standard-error of `stat_func` applied to
     `empirical_distribution` dataset. Optionally return the list of resampled
@@ -22,6 +23,8 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
     return_dist : boolean, default False
         If True, return the list of resampled values of the estimator instead
         of the standard error (see Returns)
+    random_seed : int, optional
+        Random seed for reproducibility
 
     Returns
     -------
@@ -31,6 +34,7 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
         standard error
     """
     num_data = empirical_distribution.size
+    rng = default_rng(seed=random_seed)
 
     try:
         # try to vectorise the bootstrapping, unless the size of the resulting
@@ -41,7 +45,7 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
 
         # vectorisation will also fail if `stat_func` does not have an `axis`
         # kwarg, which will raise a TypeError here
-        resample_indexes = np.random.randint(
+        resample_indexes = rng.integers(
             0, num_data, size=(num_bootstraps, num_data))
         resampled_estimator = stat_func(
             empirical_distribution[resample_indexes], axis=1
@@ -50,7 +54,7 @@ def bootstrap_resample(stat_func, empirical_distribution, num_bootstraps,
         # more memory safe but much slower
         resampled_estimator = np.zeros(num_bootstraps)
         for boot in range(num_bootstraps):
-            resample_indexes = np.random.randint(0, num_data, size=num_data)
+            resample_indexes = rng.integers(0, num_data, size=num_data)
             resampled_estimator[boot] = stat_func(
                 empirical_distribution[resample_indexes])
 

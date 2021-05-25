@@ -340,12 +340,15 @@ class CrossFidelity(CostInterface):
         # bootstrap resample for means and std-errs
         tr_rhoA_rhoB, tr_rhoA_rhoB_err = bootstrap_resample(
             np.mean, dist_tr_rhoA_rhoB, self._num_bootstraps,
+            random_seed=self.seed,
         )
         tr_rhoA_2, tr_rhoA_2_err = bootstrap_resample(
             np.mean, dist_tr_rhoA_2, self._num_bootstraps,
+            random_seed=self.seed,
         )
         tr_rhoB_2, tr_rhoB_2_err = bootstrap_resample(
             np.mean, dist_tr_rhoB_2, self._num_bootstraps,
+            random_seed=self.seed,
         )
 
         # divide by largest

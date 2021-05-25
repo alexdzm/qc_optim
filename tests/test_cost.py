@@ -17,9 +17,8 @@ _TEST_IBMQ_BACKEND = 'ibmq_santiago'
 _TRANSPILERS = ['instance', 'pytket']
 
 
-@pytest.mark.parametrize("vectorise", [True, False])
 @pytest.mark.parametrize("transpiler", _TRANSPILERS)
-def test_cross_fidelity(vectorise, transpiler):
+def test_cross_fidelity(transpiler):
     """ """
     num_qubits = 2
     num_random = 500
@@ -93,12 +92,28 @@ def test_cross_fidelity(vectorise, transpiler):
 
     # compute overlaps and test values
     results = exe_instance.execute(circs)
+
     same, same_std = crossfid.evaluate_cost_and_std(
-        results, vectorise=vectorise)
+        results, vectorise=True)
+    tmp1, tmp2 = crossfid.evaluate_cost_and_std(
+        results, vectorise=False)
+    assert np.isclose(same, tmp1)
+    assert np.isclose(same_std, tmp2)
+
     ortho, ortho_std = crossfid_ortho.evaluate_cost_and_std(
-        results, vectorise=vectorise)
+        results, vectorise=True)
+    tmp1, tmp2 = crossfid_ortho.evaluate_cost_and_std(
+        results, vectorise=False)
+    assert np.isclose(ortho, tmp1)
+    assert np.isclose(ortho_std, tmp2)
+
     superpos, superpos_std = crossfid_superpos.evaluate_cost_and_std(
-        results, vectorise=vectorise)
+        results, vectorise=True)
+    tmp1, tmp2 = crossfid_superpos.evaluate_cost_and_std(
+        results, vectorise=False)
+    assert np.isclose(superpos, tmp1)
+    assert np.isclose(superpos_std, tmp2)
+
     for mean, std, target in zip(
         [same, ortho, superpos],
         [same_std, ortho_std, superpos_std],
