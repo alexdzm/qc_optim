@@ -57,6 +57,7 @@ from .core import (
 from .ibmq import BackendManager, make_quantum_instance
 from .stats import bootstrap_resample
 from .circuit import (
+    simplify_rotation_angles,
     add_random_measurements,
     RandomMeasurementHandler,
     bind_params,

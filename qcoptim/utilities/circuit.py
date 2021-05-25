@@ -3,7 +3,11 @@ Circuit utilities
 """
 
 import numpy as np
+from numpy import pi, sin, cos
+from numpy import arccos as acos
+from numpy import arctan as atan
 
+from qiskit import QuantumCircuit
 from qiskit.circuit import Measure
 from qiskit.utils import QuantumInstance
 from qiskit.quantum_info import random_unitary
@@ -12,11 +16,51 @@ from .core import prefix_to_names
 from .pytket import compile_for_backend
 
 
+def simplify_rotation_angles(circuit):
+    """
+    Transpiled circuits can sometimes end up with rotation gates where the
+    angles are given as complicated expressions (even when the parameters are
+    bound), which often cannot be drawn on screen. This function calls `eval`
+    on these expression and generates a copy of the circuit containing only
+    float valued angles.
+
+    Assumes circuit has been transpiled into the qiskit basis set:
+    {sqrt{X}, Rz, CX} and so only Rz gates are rotations.
+
+    Parameters
+    ----------
+    circuit : qiskit.QuantumCircuit
+        Circuit to simplify
+
+    Returns
+    -------
+    simplified_circuit : qiskit.QuantumCircuit
+        Copy of the circuit with rotation angles evaluated
+    """
+    qasm_string = circuit.qasm()
+
+    eval_lines = []
+    for line in qasm_string.split('\n'):
+        if line[:2] == 'rz':
+            for count_back in range(len(line)):
+                if line[-count_back] == ')':
+                    break
+            eval_str = line[3:-count_back]
+            val = eval(eval_str)
+            eval_lines.append(line[:3] + f'{val}' + line[-count_back:])
+        else:
+            eval_lines.append(line)
+    qasm_eval = '\n'.join(eval_lines)
+
+    return QuantumCircuit.from_qasm_str(qasm_eval)
+
+
 def transpile_circuit(
     circuit,
     instance,
     method,
     enforce_bijection=False,
+    **transpile_args,
 ):
     """
     Transpile the circuit for a backend passed as a quantum instance, using
