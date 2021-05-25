@@ -451,31 +451,30 @@ def _crossfidelity_fixed_u(
                              + ' calculate cross-fidelity.') from missing_exp
 
         # normalise counts dict to give empirical probability dists
-        num_measurements_A = sum(countsdict_rhoA_fixedU.values())
-        P_rhoA_fixedU = {
-            k: v/num_measurements_A
-            for k, v in countsdict_rhoA_fixedU.items()
-        }
-        num_measurements_B = sum(countsdict_rhoB_fixedU.values())
-        P_rhoB_fixedU = {
-            k: v/num_measurements_B
-            for k, v in countsdict_rhoB_fixedU.items()
-        }
+        P_A_strings = list(countsdict_rhoA_fixedU.keys())
+        P_A_dist = np.array(list(countsdict_rhoA_fixedU.values()))
+        num_measurements_A = np.sum(P_A_dist)
+        P_A_dist = P_A_dist / num_measurements_A
+        #
+        P_B_strings = list(countsdict_rhoB_fixedU.keys())
+        P_B_dist = np.array(list(countsdict_rhoB_fixedU.values()))
+        num_measurements_B = np.sum(P_B_dist)
+        P_B_dist = P_B_dist / num_measurements_B
 
         # use this to check number of qubits has been consistent
         # over all random unitaries
         if nb_qubits is None:
             # get the first dict key string and find its length
-            nb_qubits = len(list(P_rhoA_fixedU.keys())[0])
-        if not nb_qubits == len(list(P_rhoA_fixedU.keys())[0]):
+            nb_qubits = len(P_A_strings[0])
+        if not nb_qubits == len(P_A_strings[0]):
             raise ValueError(
-                'nb_qubits='+f'{nb_qubits}' + ', P_rhoA_fixedU.keys()='
-                + f'{P_rhoA_fixedU.keys()}'
+                'nb_qubits='+f'{nb_qubits}' + ', P_A_strings='
+                + f'{P_A_strings}'
             )
-        if not nb_qubits == len(list(P_rhoB_fixedU.keys())[0]):
+        if not nb_qubits == len(P_B_strings[0]):
             raise ValueError(
-                'nb_qubits='+f'{nb_qubits}' + ', P_rhoB_fixedU.keys()='
-                + f'{P_rhoB_fixedU.keys()}'
+                'nb_qubits='+f'{nb_qubits}' + ', P_B_strings='
+                + f'{P_B_strings}'
             )
 
         if vectorise:
@@ -486,11 +485,12 @@ def _crossfidelity_fixed_u(
             auto_func = _auto_cross_correlation_fixed_u
 
         tr_rhoA_rhoB[uidx] = cross_func(
-            P_rhoA_fixedU, P_rhoB_fixedU)
+            P_A_strings, P_A_dist,
+            P_B_strings, P_B_dist)
         tr_rhoA_2[uidx] = auto_func(
-            P_rhoA_fixedU, num_measurements_A)
+            P_A_strings, P_A_dist, num_measurements_A)
         tr_rhoB_2[uidx] = auto_func(
-            P_rhoB_fixedU, num_measurements_B)
+            P_B_strings, P_B_dist, num_measurements_B)
 
     # normalisations
     tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB
@@ -500,7 +500,12 @@ def _crossfidelity_fixed_u(
     return tr_rhoA_rhoB, tr_rhoA_2, tr_rhoB_2
 
 
-def _cross_correlation_fixed_u(P_1, P_2):
+def _cross_correlation_fixed_u(
+    P_1_strings,
+    P_1_dist,
+    P_2_strings,
+    P_2_dist,
+):
     """
     Carries out the inner loop calculation of the Cross-Fidelity. In
     contrast to the paper, arxiv:1909.01282, it makes sense for us to
@@ -509,13 +514,20 @@ def _cross_correlation_fixed_u(P_1, P_2):
 
     Parameters
     ----------
-    P_1 : dict (normalised counts dictionary)
+    P_1_strings : list[str]
+        List of measurement strings for distribution 1
+    P_1_dist : np.ndarray
         The empirical distribution for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
-        where U is a fixed, randomly chosen unitary, and s_A is all possible
-        binary strings in the computational basis
-    P_2 : dict (normalised counts dictionary)
-        Same for qubit 2.
+        where U is a fixed, randomly chosen unitary, and s_A is the set of
+        strings (in corresponding order) given by P_1_strings
+    P_2_strings : list[str]
+        List of measurement strings for distribution 2
+    P_2_dist : np.ndarray
+        The empirical distribution for the measurments on qubit 2
+        P^{(2)}_U(s_B) = Tr[ U_B rho_2 U^dagger_B |s_B rangle langle s_B| ]
+        where U is a fixed, randomly chosen unitary, and s_B is the set of
+        strings (in corresponding order) given by P_2_strings
 
     Returns
     -------
@@ -525,8 +537,8 @@ def _cross_correlation_fixed_u(P_1, P_2):
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
     corr_fixed_u = 0
-    for sA, P_1_sA in P_1.items():
-        for sAprime, P_2_sAprime in P_2.items():
+    for sA, P_1_sA in zip(P_1_strings, P_1_dist):
+        for sAprime, P_2_sAprime in zip(P_2_strings, P_2_dist):
 
             # add up contribution
             hamming_distance = int(
@@ -539,7 +551,7 @@ def _cross_correlation_fixed_u(P_1, P_2):
     return corr_fixed_u
 
 
-def _auto_cross_correlation_fixed_u(P_1, num_measurements):
+def _auto_cross_correlation_fixed_u(P_1_strings, P_1_dist, num_measurements):
     """
     Carries out the inner loop purity calculation of arxiv:1909.01282 and
     arxiv:1801.00999, etc. In contrast to the two-source calculation above
@@ -549,11 +561,16 @@ def _auto_cross_correlation_fixed_u(P_1, num_measurements):
 
     Parameters
     ----------
-    P_1 : dict (normalised counts dictionary)
+    P_1_strings : list[str]
+        List of measurement strings for distribution 1
+    P_1_dist : np.ndarray
         The empirical distribution for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
-        where U is a fixed, randomly chosen unitary, and s_A is all possible
-        binary strings in the computational basis
+        where U is a fixed, randomly chosen unitary, and s_A is the set of
+        strings (in corresponding order) given by P_1_strings
+    num_measurements : int
+        Number of shots used to estimate empirical distribution, used to bias
+        correct
 
     Returns
     -------
@@ -563,8 +580,8 @@ def _auto_cross_correlation_fixed_u(P_1, num_measurements):
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
     corr_fixed_u = 0
-    for sA, P_1_sA in P_1.items():
-        for sAprime, P_1_sAprime in P_1.items():
+    for sA, P_1_sA in zip(P_1_strings, P_1_dist):
+        for sAprime, P_1_sAprime in zip(P_1_strings, P_1_dist):
             if sA == sAprime:
                 # bias corrected
                 corr_fixed_u += (
@@ -596,39 +613,57 @@ def _make_hamming_distance_array(binary_strings_a, binary_strings_b):
     )
 
 
-def _vectorised_cross_correlation_fixed_u(P_1, P_2):
+def _vectorised_cross_correlation_fixed_u(
+    P_1_strings,
+    P_1_dist,
+    P_2_strings,
+    P_2_dist,
+):
     """
     Carries out the inner loop calculation of the Cross-Fidelity. In
     contrast to the paper, arxiv:1909.01282, it makes sense for us to
     make the sum over sA and sA' the inner loop. So this computes the
     sum over sA and sA' for fixed random U.
 
+    Vectorised calculation should be slightly faster.
+
     Parameters
     ----------
-    P_1 : dict (normalised counts dictionary)
+    P_1_strings : list[str]
+        List of measurement strings for distribution 1
+    P_1_dist : np.ndarray
         The empirical distribution for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
-        where U is a fixed, randomly chosen unitary, and s_A is all possible
-        binary strings in the computational basis
-    P_2 : dict (normalised counts dictionary)
-        Same for qubit 2.
+        where U is a fixed, randomly chosen unitary, and s_A is the set of
+        strings (in corresponding order) given by P_1_strings
+    P_2_strings : list[str]
+        List of measurement strings for distribution 2
+    P_2_dist : np.ndarray
+        The empirical distribution for the measurments on qubit 2
+        P^{(2)}_U(s_B) = Tr[ U_B rho_2 U^dagger_B |s_B rangle langle s_B| ]
+        where U is a fixed, randomly chosen unitary, and s_B is the set of
+        strings (in corresponding order) given by P_2_strings
 
     Returns
     -------
     float
         Evaluation of the inner sum of the cross-fidelity
     """
-    hamming_distances = _make_hamming_distance_array(list(P_1.keys()),
-                                                     list(P_2.keys()))
+    hamming_distances = _make_hamming_distance_array(P_1_strings,
+                                                     P_2_strings)
 
     return np.sum(
         (-2.) ** (-1*hamming_distances)
-        * np.array(list(P_1.values()))[:, np.newaxis]
-        * np.array(list(P_2.values()))[np.newaxis, :]
+        * P_1_dist[:, np.newaxis]
+        * P_2_dist[np.newaxis, :]
     )
 
 
-def _vectorised_auto_cross_correlation_fixed_u(P_1, num_measurements):
+def _vectorised_auto_cross_correlation_fixed_u(
+    P_1_strings,
+    P_1_dist,
+    num_measurements,
+):
     """
     Carries out the inner loop purity calculation of arxiv:1909.01282 and
     arxiv:1801.00999, etc. In contrast to the two-source calculation above
@@ -636,32 +671,39 @@ def _vectorised_auto_cross_correlation_fixed_u(P_1, num_measurements):
     distribution of bit string probabilities so we need to take additional care
     to avoid estimator bias when computing cross-correlations.
 
+    Vectorised calculation should be slightly faster.
+
     Parameters
     ----------
-    P_1 : dict (normalised counts dictionary)
+    P_1_strings : list[str]
+        List of measurement strings for distribution 1
+    P_1_dist : np.ndarray
         The empirical distribution for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
-        where U is a fixed, randomly chosen unitary, and s_A is all possible
-        binary strings in the computational basis
+        where U is a fixed, randomly chosen unitary, and s_A is the set of
+        strings (in corresponding order) given by P_1_strings
+    num_measurements : int
+        Number of shots used to estimate empirical distribution, used to bias
+        correct
 
     Returns
     -------
     float
         Evaluation of the inner sum of the cross-fidelity
     """
-    hamming_distances = _make_hamming_distance_array(list(P_1.keys()),
-                                                     list(P_1.keys()))
+    hamming_distances = _make_hamming_distance_array(P_1_strings,
+                                                     P_1_strings)
 
     vectorised_sum = (
         (-2.) ** (-1*hamming_distances)
-        * np.array(list(P_1.values()))[:, np.newaxis]
-        * np.array(list(P_1.values()))[np.newaxis, :]
+        * P_1_dist[:, np.newaxis]
+        * P_1_dist[np.newaxis, :]
     )
 
     # correct bias
     vectorised_sum = (
         vectorised_sum * num_measurements
-        - np.diag(np.array(list(P_1.values())))
+        - np.diag(P_1_dist)
     ) / (num_measurements - 1)
 
     return np.sum(vectorised_sum)
