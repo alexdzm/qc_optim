@@ -142,13 +142,14 @@ def test_purity_boost_calibrator(transpiler):
 
     # run calibration
     results = exe_instance.execute(circs)
-    calibrator.process_calibration_results(results)
+    calibrator.process_calibration_results(results, vectorise=True)
     assert calibrator.calibrated
 
     # check stored data, ideally ptot should be 0
     target_value = 0
-    assert calibrator.ptot - 4*calibrator.ptot_std < target_value
-    assert calibrator.ptot + 4*calibrator.ptot_std > target_value
+    ptot, ptot_std = calibrator.ptot, calibrator.ptot_std
+    assert ptot - 4*ptot_std < target_value
+    assert ptot + 4*ptot_std > target_value
 
     # check reset
     calibrator.reset()
@@ -159,6 +160,13 @@ def test_purity_boost_calibrator(transpiler):
     calibrator.calibration_point = np.ones(ansatz.nb_params)
     assert len(calibrator.calibration_circuits) == num_random
     assert calibrator.calibration_circuits == []
+
+    # run non-vectorised calculation and compare results
+    calibrator.ptot = None
+    calibrator.ptot_std = None
+    calibrator.process_calibration_results(results, vectorise=False)
+    assert np.isclose(calibrator.ptot, ptot)
+    assert np.isclose(calibrator.ptot_std, ptot_std)
 
 
 @pytest.mark.parametrize("transpiler", _TRANSPILERS)
@@ -248,9 +256,6 @@ def test_purity_boost_calibrator_shared_rand_meas_handler(transpiler):
     for calib in [calibrator1, calibrator2]:
         assert calib.ptot - 4*calib.ptot_std < target_value
         assert calib.ptot + 4*calib.ptot_std > target_value
-
-    # should have slightly different values, from bootstrapping
-    assert not np.isclose(calibrator1.ptot_std, calibrator2.ptot_std)
 
 
 @pytest.mark.parametrize("transpiler", _TRANSPILERS)
