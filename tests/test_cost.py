@@ -17,8 +17,9 @@ _TEST_IBMQ_BACKEND = 'ibmq_santiago'
 _TRANSPILERS = ['instance', 'pytket']
 
 
+@pytest.mark.parametrize("vectorise", [True, False])
 @pytest.mark.parametrize("transpiler", _TRANSPILERS)
-def test_cross_fidelity(transpiler):
+def test_cross_fidelity(vectorise, transpiler):
     """ """
     num_qubits = 2
     num_random = 500
@@ -92,9 +93,12 @@ def test_cross_fidelity(transpiler):
 
     # compute overlaps and test values
     results = exe_instance.execute(circs)
-    same, same_std = crossfid.evaluate_cost_and_std(results)
-    ortho, ortho_std = crossfid_ortho.evaluate_cost_and_std(results)
-    superpos, superpos_std = crossfid_superpos.evaluate_cost_and_std(results)
+    same, same_std = crossfid.evaluate_cost_and_std(
+        results, vectorise=vectorise)
+    ortho, ortho_std = crossfid_ortho.evaluate_cost_and_std(
+        results, vectorise=vectorise)
+    superpos, superpos_std = crossfid_superpos.evaluate_cost_and_std(
+        results, vectorise=vectorise)
     for mean, std, target in zip(
         [same, ortho, superpos],
         [same_std, ortho_std, superpos_std],
