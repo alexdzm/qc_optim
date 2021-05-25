@@ -113,6 +113,7 @@ class BaseAnsatz(AnsatzInterface):
         self._transpiler_map = None
         self._transpiling_instance = None
         self._transpiling_method = None
+        self._transpile_args = None
 
     def _generate_params(self):
         """ To be implemented in the subclasses """
@@ -127,6 +128,7 @@ class BaseAnsatz(AnsatzInterface):
         instance,
         method='instance',
         enforce_bijection=False,
+        **transpile_args,
     ):
         """
         Transpile the ansatz circuit
@@ -139,13 +141,11 @@ class BaseAnsatz(AnsatzInterface):
             Method to use for transpiling, supported options:
                 -> "instance" : use quantum instance
                 -> "pytket" : use pytket, targeting instance's backend
-        strict : boolean, optional
-            If strict is True, consecutive calls after the first will raise an
-            error if they request a different instance or method than was first
-            passed
         enforce_bijection : boolean, optional
             If set to True, will raise ValueError if the transpiler map found
             is not a bijection
+        **transpile_args : dict
+            Other args to pass to the transpiler
 
         Returns
         -------
@@ -157,6 +157,8 @@ class BaseAnsatz(AnsatzInterface):
                 and self._transpiling_instance != instance)
             or (self._transpiling_method is not None
                 and self._transpiling_method != method)
+            or (self._transpile_args is not None
+                and self._transpile_args != transpile_args)
         ):
             if self.strict_transpile:
                 raise ValueError(
@@ -164,6 +166,7 @@ class BaseAnsatz(AnsatzInterface):
                     + ' different quantum instances or transpiler methods are'
                     + ' not allowed.'
                 )
+            self._transpile_args = None
             self._transpiling_instance = None
             self._transpiling_method = None
             self._transpiled_circuit = None
@@ -178,12 +181,15 @@ class BaseAnsatz(AnsatzInterface):
             self._transpiling_instance = instance
         if self._transpiling_method is None:
             self._transpiling_method = method
+        if self._transpile_args is None:
+            self._transpile_args = transpile_args
 
         self._transpiled_circuit, self._transpiler_map = transpile_circuit(
             self.circuit,
             self._transpiling_instance,
             self._transpiling_method,
             enforce_bijection=enforce_bijection,
+            **transpile_args,
         )
 
         return self._transpiled_circuit

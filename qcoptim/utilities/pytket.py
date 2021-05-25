@@ -6,7 +6,7 @@ from qiskit.aqua.utils.backend_utils import is_ibmq_provider
 from pytket.extensions.qiskit import qiskit_to_tk, tk_to_qiskit, IBMQBackend
 
 
-def compile_for_backend(backend, circuit):
+def compile_for_backend(backend, circuit, optimisation_level=2):
     """
     Use pytket to compile single circuit or list of circuits for a IBMQ
     backend, preserves circuit names.
@@ -39,7 +39,8 @@ def compile_for_backend(backend, circuit):
     transpiled_circuits = []
     for circ in circuit:
         pytket_circuit = qiskit_to_tk(circ)
-        pytket_backend.compile_circuit(pytket_circuit, optimisation_level=2)
+        pytket_backend.compile_circuit(
+            pytket_circuit, optimisation_level=optimisation_level)
         transpiled_circuits.append(tk_to_qiskit(pytket_circuit))
 
         # preserve exact parameter objs

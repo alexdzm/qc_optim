@@ -35,6 +35,8 @@ def transpile_circuit(
     enforce_bijection : boolean, optional
         If set to True, will raise ValueError if the transpiler map found
         is not a bijection
+    **transpile_args : dict
+        Other args to pass to the transpiler
 
     Returns
     -------
@@ -42,7 +44,7 @@ def transpile_circuit(
         The transpiled circuit
     """
 
-    # add measurements, these will be used to infer _transpiler_map
+    # add measurements, these will be used to infer transpiler_map
     tmp = circuit.copy()
     tmp.measure_all()
 
@@ -50,7 +52,7 @@ def transpile_circuit(
     if method == 'instance':
         t_circ = instance.transpile(tmp)[0]
     elif method == 'pytket':
-        t_circ = compile_for_backend(instance.backend, tmp)
+        t_circ = compile_for_backend(instance.backend, tmp, **transpile_args)
     else:
         raise ValueError('Transpiler method: '+f'{method}'+', not recognized.')
 
