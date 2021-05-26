@@ -1,12 +1,45 @@
 """
 """
 
+import warnings
+
 from qiskit.aqua.utils.backend_utils import is_ibmq_provider
 
 from pytket.extensions.qiskit import qiskit_to_tk, tk_to_qiskit, IBMQBackend
 
 
-def compile_for_backend(backend, circuit, optimisation_level=2):
+def _call_compile(
+    pytket_backend,
+    pytket_circuit,
+    optimisation_level,
+    auto_regress,
+):
+    """ """
+    try:
+        pytket_backend.compile_circuit(
+            pytket_circuit, optimisation_level=optimisation_level)
+    except:
+        warnings.warn(
+            'pytket compile at optimisation_level='
+            + f'{optimisation_level}' + ' failed'
+        )
+        if auto_regress and optimisation_level > 0:
+            _call_compile(
+                pytket_backend,
+                pytket_circuit,
+                optimisation_level-1,
+                auto_regress,
+            )
+        else:
+            raise
+
+
+def compile_for_backend(
+    backend,
+    circuit,
+    optimisation_level=2,
+    auto_regress=False,
+):
     """
     Use pytket to compile single circuit or list of circuits for a IBMQ
     backend, preserves circuit names.
@@ -17,6 +50,12 @@ def compile_for_backend(backend, circuit, optimisation_level=2):
         IBMQ backend to compile circuits for
     circuit : qiskit.QuantumCircuit, list(qiskit.QuantumCircuit)
         Circuit or list circuits to compile
+    optimisation_level : int, optional
+        Optimisation level argument passed to pytket compiler
+    auto_regress : boolean, optional
+        If set to True and compilation at optimisation_level fails, function
+        will automatically decrease optimisation_level (downwards in steps of
+        1) and try again to compile at lower optimisation_level
 
     Returns
     -------
@@ -39,8 +78,12 @@ def compile_for_backend(backend, circuit, optimisation_level=2):
     transpiled_circuits = []
     for circ in circuit:
         pytket_circuit = qiskit_to_tk(circ)
-        pytket_backend.compile_circuit(
-            pytket_circuit, optimisation_level=optimisation_level)
+        _call_compile(
+            pytket_backend,
+            pytket_circuit,
+            optimisation_level,
+            auto_regress,
+        )
         transpiled_circuits.append(tk_to_qiskit(pytket_circuit))
 
         # preserve exact parameter objs
