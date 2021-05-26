@@ -146,26 +146,15 @@ class CrossFidelity(CostInterface):
         """
         Setter for comparison_results, perform validations
         """
-        # check if comparison_results contains the crossfidelity_metadata
-        # tags and if it does compare them, if these comparisons fail then
-        # crash, if the crossfidelity_metadata is missing issue a warning
         if results is not None:
-            if not isinstance(results, dict):
-                results = results.to_dict()
 
-            comparison_metadata = None
-            try:
+            if (
+                isinstance(results, dict)
+                and 'cross-fidelity' in results.keys()
+            ):
+
+                # compare metadata
                 comparison_metadata = results['crossfidelity_metadata']
-            except KeyError:
-                warnings.warn(
-                    'Warning, input results dictionary does not contain'
-                    + ' crossfidelity_metadata and so we cannot confirm that'
-                    + ' the results are compatible. If the input results'
-                    + ' object was collecting by this class consider using'
-                    + ' the tag_results_metadata method to add the'
-                    + ' crossfidelity_metadata.'
-                )
-            if comparison_metadata is not None:
                 if self.seed != comparison_metadata['seed']:
                     raise ValueError(
                         'Comparison results use different random seed.'
@@ -180,19 +169,34 @@ class CrossFidelity(CostInterface):
                         + ' results.'
                     )
 
-            # bug fix, need counts dict keys to be hex values
-            for val in results['results']:
-                new_counts = {}
-                for ckey, cval in val['data']['counts'].items():
-                    # detect it is not hex
-                    if not ckey[:2] == '0x':
-                        ckey = hex(int(ckey, 2))
-                    new_counts[ckey] = cval
-                val['data']['counts'] = new_counts
+                # bug fix, need counts dict keys to be hex values
+                for val in results['results']:
+                    new_counts = {}
+                    for ckey, cval in val['data']['counts'].items():
+                        # detect it is not hex
+                        if not ckey[:2] == '0x':
+                            ckey = hex(int(ckey, 2))
+                        new_counts[ckey] = cval
+                    val['data']['counts'] = new_counts
 
-            # convert comparison_results back to qiskit results obj, so we can
-            # use `get_counts` method
-            self._comparison_results = Result.from_dict(results)
+            else:
+                warnings.warn(
+                    'Warning, input results is not a dictionary containing'
+                    + ' crossfidelity_metadata and so we cannot confirm that'
+                    + ' the results are compatible. If the input results'
+                    + ' object was collecting by this class consider using'
+                    + ' the tag_results_metadata method to add the'
+                    + ' crossfidelity_metadata.'
+                )
+
+            if isinstance(results, Result):
+                self._comparison_results = results
+            elif isinstance(results, dict):
+                self._comparison_results = Result.from_dict(results)
+            else:
+                raise TypeError(
+                    'comparison_results recieved type '+f'{type(results)}'
+                )
 
     def tag_results_metadata(self, results):
         """
@@ -309,9 +313,9 @@ class CrossFidelity(CostInterface):
 
         Returns
         -------
-        float
+        mean : float
             Evaluated cross-fidelity
-        float
+        std : float
             Standard error on cross-fidelity estimation, obtained from
             bootstrap resampling
         """
