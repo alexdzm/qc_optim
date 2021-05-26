@@ -157,8 +157,6 @@ class BaseAnsatz(AnsatzInterface):
                 and self._transpiling_instance != instance)
             or (self._transpiling_method is not None
                 and self._transpiling_method != method)
-            or (self._transpile_args is not None
-                and self._transpile_args != transpile_args)
         ):
             if self.strict_transpile:
                 raise ValueError(
@@ -176,21 +174,17 @@ class BaseAnsatz(AnsatzInterface):
         if self._transpiled_circuit is not None:
             return self._transpiled_circuit
 
+        self._transpiled_circuit, self._transpiler_map = transpile_circuit(
+            self.circuit, instance, method,
+            enforce_bijection=enforce_bijection,
+            **transpile_args,
+        )
+
         # store instance and method
         if self._transpiling_instance is None:
             self._transpiling_instance = instance
         if self._transpiling_method is None:
             self._transpiling_method = method
-        if self._transpile_args is None:
-            self._transpile_args = transpile_args
-
-        self._transpiled_circuit, self._transpiler_map = transpile_circuit(
-            self.circuit,
-            self._transpiling_instance,
-            self._transpiling_method,
-            enforce_bijection=enforce_bijection,
-            **transpile_args,
-        )
 
         return self._transpiled_circuit
 
