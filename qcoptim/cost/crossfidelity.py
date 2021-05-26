@@ -331,16 +331,20 @@ class CrossFidelity(CostInterface):
         # circuit naming functions
         def circ_namesA(idx):
             return name + self._rand_meas_handler.circ_name(idx)
+
         def circ_namesB(idx):
             return self._prefixB + f'{idx}'
 
-        (dist_tr_rhoA_rhoB,
-         dist_tr_rhoA_2,
-         dist_tr_rhoB_2) = _crossfidelity_fixed_u(
-         results, self._comparison_results, self.nb_random,
-         circ_namesA=circ_namesA, circ_namesB=circ_namesB,
-         vectorise=vectorise,
+        dist_tr_rhoA_rhoB = _crosscorrelation_fixed_u(
+            results, self._comparison_results, self.nb_random,
+            circ_namesA=circ_namesA, circ_namesB=circ_namesB,
+            vectorise=vectorise,
         )
+        dist_tr_rhoA_2 = _purity_fixed_u(
+            results, self.nb_random, names=circ_namesA, vectorise=vectorise)
+        dist_tr_rhoB_2 = _purity_fixed_u(
+            self._comparison_results, self.nb_random, names=circ_namesB, 
+            vectorise=vectorise)
 
         # bootstrap resample for means and std-errs
         tr_rhoA_rhoB, tr_rhoA_rhoB_err = bootstrap_resample(
@@ -385,32 +389,101 @@ class CrossFidelity(CostInterface):
         return mean, std
 
 
-def _unpack_experiment(idx, results):
+def _load_experiment(experiment_idx, results, nb_qubits):
     """
     Parameters
     ----------
-    idx : int
+    experiment_idx : int
         Index of experiment to access
     results : qiskit.result.Result
         Results object
+    nb_qubits : int, or None
+        If not None, will raise an error if the number of qubits found in the
+        experiment is not equal to passed value
 
     Returns
     -------
-    num_qubits : int
-        Number of qubits measured in experiment
     hexstrings : list[str]
         Keys of the counts, given as hexidecimal strings
     counts : numpy.ndarray
         Numpy array with the measurement counts
+    nb_qubits : int
+        Number of qubits measured in experiment
     """
-    experiment = results.results[idx]
+
+    experiment = results.results[experiment_idx]
     num_qubits = experiment.header.n_qubits
     hexstrings = list(experiment.data.counts.keys())
     counts = np.array(list(experiment.data.counts.values()))
-    return num_qubits, hexstrings, counts
+
+    # use this to check number of qubits has been consistent
+    # over all random unitaries
+    if nb_qubits is not None and nb_qubits != num_qubits:
+        raise ValueError(
+            'stored nb_qubits='+f'{nb_qubits}' + ', new num_qubits='
+            + f'{num_qubits}'
+        )
+
+    return hexstrings, counts, num_qubits
 
 
-def _crossfidelity_fixed_u(
+def _purity_fixed_u(results, nb_random, names=str, vectorise=False):
+    """
+    Extract the contributions towards the evaluation of the purity of a quantum
+    state using random single qubit measurements (arxiv:1909.01282), resolved
+    by each random unitary.
+
+    Parameters
+    ----------
+    results : qiskit.result.Result
+        Results to estimate purity
+    nb_random : int
+        Number of random basis used
+    names : Callable, optional
+        Function that maps index of a random circuit to a name of a circuit in
+        the qiskit results object
+
+    Returns
+    -------
+    tr_rho_2 : numpy.ndarray
+        Contributions towards random measurement purity estimate, resolved by
+        each single random measurement
+    """
+    nb_qubits = None
+
+    # make results access maps for speed
+    results_access_map = {
+        res.header.name: idx for idx, res in enumerate(results.results)
+    }
+
+    # iterate over the different random unitaries
+    tr_rho_2 = np.zeros(nb_random)
+    for uidx in range(nb_random):
+
+        try:
+            experiment_idx = results_access_map[names(uidx)]
+        except KeyError as missing_exp:
+            raise ValueError('Cannot extract matching experiment data to'
+                             + ' calculate cross-fidelity.') from missing_exp
+
+        hexstrings, counts, nb_qubits = _load_experiment(
+            experiment_idx, results, nb_qubits)
+
+        if vectorise:
+            auto_func = _vectorised_auto_cross_correlation_fixed_u
+        else:
+            auto_func = _auto_cross_correlation_fixed_u
+
+        tr_rho_2[uidx] = auto_func(
+            hexstrings, counts, nb_qubits)
+
+    # normalisation
+    tr_rho_2 = (2**nb_qubits)*tr_rho_2
+
+    return tr_rho_2
+
+
+def _crosscorrelation_fixed_u(
     resultsA,
     resultsB,
     nb_random,
@@ -464,66 +537,35 @@ def _crossfidelity_fixed_u(
 
     # iterate over the different random unitaries
     tr_rhoA_rhoB = np.zeros(nb_random)
-    tr_rhoA_2 = np.zeros(nb_random)
-    tr_rhoB_2 = np.zeros(nb_random)
     for uidx in range(nb_random):
 
-        # try to extract matching experiment data
         try:
-            experiment_idx = resultsA_access_map[circ_namesA(uidx)]
-            num_qubits_A, P_A_strings, P_A_counts = _unpack_experiment(
-                experiment_idx, resultsA)
+            experiment_idx_A = resultsA_access_map[circ_namesA(uidx)]
+            experiment_idx_B = resultsB_access_map[circ_namesB(uidx)]
         except KeyError as missing_exp:
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
-        try:
-            experiment_idx = resultsB_access_map[circ_namesB(uidx)]
-            num_qubits_B, P_B_strings, P_B_counts = _unpack_experiment(
-                experiment_idx, resultsB)
-        except KeyError as missing_exp:
-            raise ValueError('Cannot extract matching experiment data to'
-                             + ' calculate cross-fidelity.') from missing_exp
-
-        # use this to check number of qubits has been consistent
-        # over all random unitaries
-        if nb_qubits is None:
-            # get the first dict key string and find its length
-            nb_qubits = num_qubits_A
-        if not nb_qubits == num_qubits_A:
-            raise ValueError(
-                'nb_qubits='+f'{nb_qubits}' + ', num_qubits_A='
-                + f'{num_qubits_A}'
-            )
-        if not nb_qubits == num_qubits_B:
-            raise ValueError(
-                'nb_qubits='+f'{nb_qubits}' + ', num_qubits_B='
-                + f'{num_qubits_B}'
-            )
+        P_A_strings, P_A_counts, nb_qubits = _load_experiment(
+            experiment_idx_A, resultsA, nb_qubits)
+        P_B_strings, P_B_counts, nb_qubits = _load_experiment(
+            experiment_idx_B, resultsB, nb_qubits)
 
         if vectorise:
             cross_func = _vectorised_cross_correlation_fixed_u
-            auto_func = _vectorised_auto_cross_correlation_fixed_u
         else:
             cross_func = _cross_correlation_fixed_u
-            auto_func = _auto_cross_correlation_fixed_u
 
         tr_rhoA_rhoB[uidx] = cross_func(
             P_A_strings, P_A_counts,
             P_B_strings, P_B_counts,
             nb_qubits,
         )
-        tr_rhoA_2[uidx] = auto_func(
-            P_A_strings, P_A_counts, nb_qubits)
-        tr_rhoB_2[uidx] = auto_func(
-            P_B_strings, P_B_counts, nb_qubits)
 
     # normalisations
     tr_rhoA_rhoB = (2**nb_qubits)*tr_rhoA_rhoB
-    tr_rhoA_2 = (2**nb_qubits)*tr_rhoA_2
-    tr_rhoB_2 = (2**nb_qubits)*tr_rhoB_2
 
-    return tr_rhoA_rhoB, tr_rhoA_2, tr_rhoB_2
+    return tr_rhoA_rhoB
 
 
 def _hex_to_bin(hexstring):

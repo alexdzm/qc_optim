@@ -3,11 +3,7 @@
 
 import numpy as np
 
-from ..cost.crossfidelity import (
-    _unpack_experiment,
-    _auto_cross_correlation_fixed_u,
-    _vectorised_auto_cross_correlation_fixed_u,
-)
+from ..cost.crossfidelity import _purity_fixed_u
 from ..utilities import bootstrap_resample, RandomMeasurementHandler
 
 
@@ -63,73 +59,6 @@ class BaseCalibrator():
 #
 
 
-def estimate_purity_fixed_u(results, num_random, names=str, vectorise=False):
-    """
-    Extract the contributions towards the evaluation of the purity of a quantum
-    state using random single qubit measurements (arxiv:1909.01282), resolved
-    by each random unitary.
-
-    Parameters
-    ----------
-    results : qiskit.result.Result
-        Results to estimate purity
-    num_random : int
-        Number of random basis used
-    names : Callable, optional
-        Function that maps index of a random circuit to a name of a circuit in
-        the qiskit results object
-
-    Returns
-    -------
-    contributions_fixed_u : numpy.ndarray
-        Contributions towards random measurement purity estimate, resolved by
-        each single random measurement
-    """
-    nb_qubits = None
-
-    # make results access maps for speed
-    results_access_map = {
-        res.header.name: idx for idx, res in enumerate(results.results)
-    }
-
-    # iterate over the different random unitaries
-    contributions_fixed_u = np.zeros(num_random)
-    for uidx in range(num_random):
-
-        # try to extract matching experiment data
-        try:
-            experiment_idx = results_access_map[names(uidx)]
-            num_qubits, hexstrings, counts = _unpack_experiment(
-                experiment_idx, results)
-        except KeyError as missing_exp:
-            raise ValueError('Cannot extract matching experiment data to'
-                             + ' calculate cross-fidelity.') from missing_exp
-
-        # use this to check number of qubits has been consistent
-        # over all random unitaries
-        if nb_qubits is None:
-            # get the first dict key string and find its length
-            nb_qubits = num_qubits
-        if not nb_qubits == num_qubits:
-            raise ValueError(
-                'stored nb_qubits='+f'{nb_qubits}' + ', new num_qubits='
-                + f'{num_qubits}'
-            )
-
-        if vectorise:
-            auto_func = _vectorised_auto_cross_correlation_fixed_u
-        else:
-            auto_func = _auto_cross_correlation_fixed_u
-
-        contributions_fixed_u[uidx] = auto_func(
-            hexstrings, counts, nb_qubits)
-
-    # normalisation
-    contributions_fixed_u = (2**nb_qubits)*contributions_fixed_u
-
-    return contributions_fixed_u
-
-
 def purity_from_random_measurements(
     results,
     num_random,
@@ -162,7 +91,7 @@ def purity_from_random_measurements(
     float
         Standard error in estimate
     """
-    contributions_fixed_u = estimate_purity_fixed_u(
+    contributions_fixed_u = _purity_fixed_u(
         results, num_random, names=names, vectorise=vectorise,
     )
 
@@ -332,7 +261,7 @@ class PurityBoostCalibrator(BaseCalibrator):
         else:
             _circ_name = self._rand_meas_handler.circ_name
 
-        contributions_fixed_u = estimate_purity_fixed_u(
+        contributions_fixed_u = _purity_fixed_u(
             results, self.num_random, names=_circ_name, vectorise=vectorise,
         )
 

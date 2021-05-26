@@ -3,7 +3,6 @@
 
 from .calibrators import (
     BaseCalibrator,
-    estimate_purity_fixed_u,
     purity_from_random_measurements,
     PurityBoostCalibrator,
 )
