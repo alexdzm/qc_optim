@@ -3,7 +3,7 @@
 
 import numpy as np
 
-from ..cost.crossfidelity import _purity_fixed_u
+from ..cost.crossfidelity import _purity_per_u
 from ..utilities import bootstrap_resample, RandomMeasurementHandler
 
 
@@ -91,7 +91,7 @@ def purity_from_random_measurements(
     float
         Standard error in estimate
     """
-    contributions_fixed_u = _purity_fixed_u(
+    contributions_fixed_u = _purity_per_u(
         results, num_random, names=names, vectorise=vectorise,
     )
 
@@ -261,7 +261,7 @@ class PurityBoostCalibrator(BaseCalibrator):
         else:
             _circ_name = self._rand_meas_handler.circ_name
 
-        contributions_fixed_u = _purity_fixed_u(
+        contributions_fixed_u = _purity_per_u(
             results, self.num_random, names=_circ_name, vectorise=vectorise,
         )
 

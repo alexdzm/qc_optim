@@ -335,14 +335,14 @@ class CrossFidelity(CostInterface):
         def circ_namesB(idx):
             return self._prefixB + f'{idx}'
 
-        dist_tr_rhoA_rhoB = _crosscorrelation_fixed_u(
+        dist_tr_rhoA_rhoB = _crosscorrelation_per_u(
             results, self._comparison_results, self.nb_random,
             circ_namesA=circ_namesA, circ_namesB=circ_namesB,
             vectorise=vectorise,
         )
-        dist_tr_rhoA_2 = _purity_fixed_u(
+        dist_tr_rhoA_2 = _purity_per_u(
             results, self.nb_random, names=circ_namesA, vectorise=vectorise)
-        dist_tr_rhoB_2 = _purity_fixed_u(
+        dist_tr_rhoB_2 = _purity_per_u(
             self._comparison_results, self.nb_random, names=circ_namesB, 
             vectorise=vectorise)
 
@@ -403,18 +403,18 @@ def _load_experiment(experiment_idx, results, nb_qubits):
 
     Returns
     -------
-    hexstrings : list[str]
-        Keys of the counts, given as hexidecimal strings
+    binarystrings : list[str]
+        Keys of the counts, given as binary strings
     counts : numpy.ndarray
         Numpy array with the measurement counts
     nb_qubits : int
         Number of qubits measured in experiment
     """
 
-    experiment = results.results[experiment_idx]
-    num_qubits = experiment.header.n_qubits
-    hexstrings = list(experiment.data.counts.keys())
-    counts = np.array(list(experiment.data.counts.values()))
+    counts_dict = results.get_counts(experiment_idx)
+    binarystrings = list(counts_dict.keys())
+    counts = np.array(list(counts_dict.values()))
+    num_qubits = len(binarystrings[0])
 
     # use this to check number of qubits has been consistent
     # over all random unitaries
@@ -424,10 +424,10 @@ def _load_experiment(experiment_idx, results, nb_qubits):
             + f'{num_qubits}'
         )
 
-    return hexstrings, counts, num_qubits
+    return binarystrings, counts, num_qubits
 
 
-def _purity_fixed_u(results, nb_random, names=str, vectorise=False):
+def _purity_per_u(results, nb_random, names=str, vectorise=False):
     """
     Extract the contributions towards the evaluation of the purity of a quantum
     state using random single qubit measurements (arxiv:1909.01282), resolved
@@ -470,12 +470,11 @@ def _purity_fixed_u(results, nb_random, names=str, vectorise=False):
             experiment_idx, results, nb_qubits)
 
         if vectorise:
-            auto_func = _vectorised_auto_cross_correlation_fixed_u
+            auto_func = _vectorised_auto_cross_correlation_single_u
         else:
-            auto_func = _auto_cross_correlation_fixed_u
+            auto_func = _auto_cross_correlation_single_u
 
-        tr_rho_2[uidx] = auto_func(
-            hexstrings, counts, nb_qubits)
+        tr_rho_2[uidx] = auto_func(hexstrings, counts,)
 
     # normalisation
     tr_rho_2 = (2**nb_qubits)*tr_rho_2
@@ -483,7 +482,7 @@ def _purity_fixed_u(results, nb_random, names=str, vectorise=False):
     return tr_rho_2
 
 
-def _crosscorrelation_fixed_u(
+def _crosscorrelation_per_u(
     resultsA,
     resultsB,
     nb_random,
@@ -552,14 +551,13 @@ def _crosscorrelation_fixed_u(
             experiment_idx_B, resultsB, nb_qubits)
 
         if vectorise:
-            cross_func = _vectorised_cross_correlation_fixed_u
+            cross_func = _vectorised_cross_correlation_single_u
         else:
-            cross_func = _cross_correlation_fixed_u
+            cross_func = _cross_correlation_single_u
 
         tr_rhoA_rhoB[uidx] = cross_func(
             P_A_strings, P_A_counts,
             P_B_strings, P_B_counts,
-            nb_qubits,
         )
 
     # normalisations
@@ -568,29 +566,11 @@ def _crosscorrelation_fixed_u(
     return tr_rhoA_rhoB
 
 
-def _hex_to_bin(hexstring):
-    """
-    Convert hexadecimal readouts (memory) to binary readouts.
-    (Copied from qiskit source -- qiskit.result.postprocess)
-    """
-    return str(bin(int(hexstring, 16)))[2:]
-
-
-def _pad_zeros(bitstring, memory_slots):
-    """
-    If the bitstring is truncated, pad extra zeros to make its length equal to
-    memory_slots.
-    (Copied from qiskit source -- qiskit.result.postprocess)
-    """
-    return format(int(bitstring, 2), '0{}b'.format(memory_slots))
-
-
-def _cross_correlation_fixed_u(
+def _cross_correlation_single_u(
     P_1_strings,
     P_1_counts,
     P_2_strings,
     P_2_counts,
-    num_qubits,
 ):
     """
     Carries out the inner loop calculation of the Cross-Fidelity. In
@@ -601,21 +581,19 @@ def _cross_correlation_fixed_u(
     Parameters
     ----------
     P_1_strings : tuple[str]
-        List of measurement strings in hexidecimal for distribution 1
+        List of measurement strings in little-endian binary for distribution 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
         where U is a fixed, randomly chosen unitary, and s_A is the set of
         strings (in corresponding order) given by P_1_strings
     P_2_strings : tuple[str]
-        List of measurement strings in hexidecimal for distribution 2
+        List of measurement strings in little-endian binary for distribution 2
     P_2_counts : np.ndarray
         Counts histogram for the measurments on qubit 2
         P^{(2)}_U(s_B) = Tr[ U_B rho_2 U^dagger_B |s_B rangle langle s_B| ]
         where U is a fixed, randomly chosen unitary, and s_B is the set of
         strings (in corresponding order) given by P_2_strings
-    num_qubits : int
-        Number of qubits measured
 
     Returns
     -------
@@ -629,12 +607,8 @@ def _cross_correlation_fixed_u(
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
     corr_fixed_u = 0
-    for hex_sA, P_1_sA in zip(P_1_strings, P_1_dist):
-        for hex_sAprime, P_2_sAprime in zip(P_2_strings, P_2_dist):
-
-            # convert hexidecimal string to binary
-            sA = _pad_zeros(_hex_to_bin(hex_sA), num_qubits)
-            sAprime = _pad_zeros(_hex_to_bin(hex_sAprime), num_qubits)
+    for sA, P_1_sA in zip(P_1_strings, P_1_dist):
+        for sAprime, P_2_sAprime in zip(P_2_strings, P_2_dist):
 
             # add up contribution
             hamming_distance = int(
@@ -647,7 +621,7 @@ def _cross_correlation_fixed_u(
     return corr_fixed_u
 
 
-def _auto_cross_correlation_fixed_u(P_1_strings, P_1_counts, num_qubits):
+def _auto_cross_correlation_single_u(P_1_strings, P_1_counts):
     """
     Carries out the inner loop purity calculation of arxiv:1909.01282 and
     arxiv:1801.00999, etc. In contrast to the two-source calculation above
@@ -658,14 +632,12 @@ def _auto_cross_correlation_fixed_u(P_1_strings, P_1_counts, num_qubits):
     Parameters
     ----------
     P_1_strings : tuple[str]
-        List of measurement strings in hexidecimal for distribution 1
+        List of measurement strings in little-endian binary for distribution 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
         where U is a fixed, randomly chosen unitary, and s_A is the set of
         strings (in corresponding order) given by P_1_strings
-    num_qubits : int
-        Number of qubits measured
 
     Returns
     -------
@@ -679,12 +651,8 @@ def _auto_cross_correlation_fixed_u(P_1_strings, P_1_counts, num_qubits):
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
     corr_fixed_u = 0
-    for hex_sA, P_1_sA in zip(P_1_strings, P_1_dist):
-        for hex_sAprime, P_1_sAprime in zip(P_1_strings, P_1_dist):
-
-            # convert hexidecimal string to binary
-            sA = _pad_zeros(_hex_to_bin(hex_sA), num_qubits)
-            sAprime = _pad_zeros(_hex_to_bin(hex_sAprime), num_qubits)
+    for sA, P_1_sA in zip(P_1_strings, P_1_dist):
+        for sAprime, P_1_sAprime in zip(P_1_strings, P_1_dist):
 
             if sA == sAprime:
                 # bias corrected
@@ -693,24 +661,15 @@ def _auto_cross_correlation_fixed_u(P_1_strings, P_1_counts, num_qubits):
                     / (num_measurements - 1)
                 )
             else:
-                try:
-                    hamming_distance = int(
-                        len(sA)*sp.spatial.distance.hamming(list(sA),
-                                                            list(sAprime))
-                    )
-                    # bias corrected
-                    corr_fixed_u += (
-                        (-2)**(-hamming_distance) * P_1_sA*P_1_sAprime
-                        * num_measurements / (num_measurements - 1)
-                    )
-                except ValueError:
-                    print(
-                        'hex_sA : '+f'{hex_sA}'+'\n'
-                        'hex_sAprime : '+f'{hex_sAprime}'+'\n'
-                        'sA : '+f'{sA}'+'\n'
-                        'sAprime : '+f'{sAprime}'+'\n'
-                        'num_qubits : '+f'{num_qubits}'
-                    )
+                hamming_distance = int(
+                    len(sA)*sp.spatial.distance.hamming(list(sA),
+                                                        list(sAprime))
+                )
+                # bias corrected
+                corr_fixed_u += (
+                    (-2)**(-hamming_distance) * P_1_sA*P_1_sAprime
+                    * num_measurements / (num_measurements - 1)
+                )
 
     return corr_fixed_u
 
@@ -721,11 +680,11 @@ def _make_full_hamming_distance_matrix(num_qubits):
     return np.count_nonzero(
         (
             np.array(
-                [list(_pad_zeros(str(bin(val))[2:], num_qubits))
+                [list(format(val, '0'+str(num_qubits)+'b'))
                  for val in range(2**num_qubits)]
             )[:, np.newaxis]
             != np.array(
-                [list(_pad_zeros(str(bin(val))[2:], num_qubits))
+                [list(format(val, '0'+str(num_qubits)+'b'))
                  for val in range(2**num_qubits)]
             )[np.newaxis, :]
         ),
@@ -733,20 +692,19 @@ def _make_full_hamming_distance_matrix(num_qubits):
     )
 
 
-def _make_hamming_distance_matrix(hexstrings_a, hexstrings_b, num_qubits):
+def _make_hamming_distance_matrix(binstrings_a, binstrings_b, num_qubits):
     """ """
     full_distance_matrix = _make_full_hamming_distance_matrix(num_qubits)
-    idx_a = [int(hexval, 16) for hexval in hexstrings_a]
-    idx_b = [int(hexval, 16) for hexval in hexstrings_b]
+    idx_a = [int(binval, 2) for binval in binstrings_a]
+    idx_b = [int(binval, 2) for binval in binstrings_b]
     return full_distance_matrix[np.ix_(idx_a, idx_b)]
 
 
-def _vectorised_cross_correlation_fixed_u(
+def _vectorised_cross_correlation_single_u(
     P_1_strings,
     P_1_counts,
     P_2_strings,
     P_2_counts,
-    num_qubits,
 ):
     """
     Carries out the inner loop calculation of the Cross-Fidelity. In
@@ -759,27 +717,27 @@ def _vectorised_cross_correlation_fixed_u(
     Parameters
     ----------
     P_1_strings : tuple[str]
-        List of measurement strings in hexidecimal for distribution 1
+        List of measurement strings in little-endian binary for distribution 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
         where U is a fixed, randomly chosen unitary, and s_A is the set of
         strings (in corresponding order) given by P_1_strings
     P_2_strings : tuple[str]
-        List of measurement strings in hexidecimal for distribution 2
+        List of measurement strings in little-endian binary for distribution 2
     P_2_counts : np.ndarray
         Counts histogram for the measurments on qubit 2
         P^{(2)}_U(s_B) = Tr[ U_B rho_2 U^dagger_B |s_B rangle langle s_B| ]
         where U is a fixed, randomly chosen unitary, and s_B is the set of
         strings (in corresponding order) given by P_2_strings
-    num_qubits : int
-        Number of qubits measured
 
     Returns
     -------
     float
         Evaluation of the inner sum of the cross-fidelity
     """
+    num_qubits = len(P_1_strings[0])
+
     # normalise counts
     P_1_dist = P_1_counts / np.sum(P_1_counts)
     P_2_dist = P_2_counts / np.sum(P_2_counts)
@@ -794,11 +752,7 @@ def _vectorised_cross_correlation_fixed_u(
     )
 
 
-def _vectorised_auto_cross_correlation_fixed_u(
-    P_1_strings,
-    P_1_counts,
-    num_qubits,
-):
+def _vectorised_auto_cross_correlation_single_u(P_1_strings, P_1_counts):
     """
     Carries out the inner loop purity calculation of arxiv:1909.01282 and
     arxiv:1801.00999, etc. In contrast to the two-source calculation above
@@ -811,20 +765,20 @@ def _vectorised_auto_cross_correlation_fixed_u(
     Parameters
     ----------
     P_1_strings : tuple[str]
-        List of measurement strings in hexidecimal for distribution 1
+        List of measurement strings in little-endian binary for distribution 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
         where U is a fixed, randomly chosen unitary, and s_A is the set of
         strings (in corresponding order) given by P_1_strings
-    num_qubits : int
-        Number of qubits measured
 
     Returns
     -------
     float
         Evaluation of the inner sum of the cross-fidelity
     """
+    num_qubits = len(P_1_strings[0])
+
     # normalise counts
     num_measurements = np.sum(P_1_counts)
     P_1_dist = P_1_counts / num_measurements

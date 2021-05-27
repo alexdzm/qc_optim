@@ -33,3 +33,4 @@ CURRENT TODO's
 		      [?] tests of new internal functions vectorise/non-vectorise crosscorrelation/purity functions
 		      -> separate out transpile tests to avoid doing all tests twice
 		      -> tests of new auto-regress option in pytket compiler
+		      -> have tests use more simulator configurations e.g. statevector, device simulations
