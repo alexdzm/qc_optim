@@ -468,8 +468,9 @@ class PurityBoostFitter(BaseFitter):
             raw_cost = self.cost.evaluate_cost(results, name=name, **kwargs)
 
         if not self.calibrator.calibrated:
+            vectorise = kwargs.get('vectorise', False)
             self.calibrator.process_calibration_results(
-                results, name=calibration_name)
+                results, name=calibration_name, vectorise=vectorise)
 
         mean = raw_cost / (1 - self.calibrator.ptot)
         var = (

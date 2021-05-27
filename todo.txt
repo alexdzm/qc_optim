@@ -29,5 +29,7 @@ PROPOSALS
 CURRENT TODO's
 --------------
 
-[chris 16/04] -> write tests for CrossFidelity
-			  -> implement some sort of blocking/shared HaarRandom sampler
+[chris 27/05] -> more careful testing of new vectorise/non-vectorise CrossFidelity/PurityBoostCalibrator options
+		      [?] tests of new internal functions vectorise/non-vectorise crosscorrelation/purity functions
+		      -> separate out transpile tests to avoid doing all tests twice
+		      -> tests of new auto-regress option in pytket compiler

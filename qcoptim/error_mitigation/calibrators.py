@@ -246,7 +246,7 @@ class PurityBoostCalibrator(BaseCalibrator):
         self._rand_meas_handler.reset()
         self.calibrated = False
 
-    def process_calibration_results(self, results, name=None, vectorise=True):
+    def process_calibration_results(self, results, name=None, vectorise=False):
         """
         Parameters
         ----------

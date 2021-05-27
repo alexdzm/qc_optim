@@ -293,7 +293,7 @@ class CrossFidelity(CostInterface):
         self,
         results,
         name='',
-        vectorise=True,
+        vectorise=False,
         **kwargs
     ):
         """
