@@ -125,7 +125,7 @@ def transpile_circuit(
     return t_circ, transpiler_map
 
 
-def bind_params(circ, param_values, param_variables, param_name=None):
+def bind_params(circ, param_values, param_variables=None, param_name=None):
     """
     Take a list of circuits with bindable parameters and bind the values
     passed according to the param_variables Returns the list of circuits with
@@ -155,10 +155,16 @@ def bind_params(circ, param_values, param_variables, param_name=None):
 
     # bind circuits but preserve names
     bound_circ = []
-    val_dict = dict(zip(param_variables, param_values))
+
+    # if param_variables are passed bind as dict, else bind with array
+    if param_variables is None:
+        binding = param_values
+    else:
+        binding = dict(zip(param_variables, param_values))
+
     for cc in circ:
         circ_name = cc.name
-        tmp = cc.bind_parameters(val_dict)
+        tmp = cc.bind_parameters(binding)
         tmp.name = circ_name
         bound_circ.append(tmp)
 

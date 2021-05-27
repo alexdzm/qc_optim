@@ -693,15 +693,24 @@ def _auto_cross_correlation_fixed_u(P_1_strings, P_1_counts, num_qubits):
                     / (num_measurements - 1)
                 )
             else:
-                hamming_distance = int(
-                    len(sA)*sp.spatial.distance.hamming(list(sA),
-                                                        list(sAprime))
-                )
-                # bias corrected
-                corr_fixed_u += (
-                    (-2)**(-hamming_distance) * P_1_sA*P_1_sAprime
-                    * num_measurements / (num_measurements - 1)
-                )
+                try:
+                    hamming_distance = int(
+                        len(sA)*sp.spatial.distance.hamming(list(sA),
+                                                            list(sAprime))
+                    )
+                    # bias corrected
+                    corr_fixed_u += (
+                        (-2)**(-hamming_distance) * P_1_sA*P_1_sAprime
+                        * num_measurements / (num_measurements - 1)
+                    )
+                except ValueError:
+                    print(
+                        'hex_sA : '+f'{hex_sA}'+'\n'
+                        'hex_sAprime : '+f'{hex_sAprime}'+'\n'
+                        'sA : '+f'{sA}'+'\n'
+                        'sAprime : '+f'{sAprime}'+'\n'
+                        'num_qubits : '+f'{num_qubits}'
+                    )
 
     return corr_fixed_u
 
