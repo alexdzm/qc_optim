@@ -96,7 +96,7 @@ def make_quantum_instance(
         backend = Aer.get_backend(backend_name)
 
     measurement_error_mitigation_cls = None
-    if measurement_error_mitigation:
+    if measurement_error_mitigation and 'statevector' not in backend.name():
         measurement_error_mitigation_cls = CompleteMeasFitter
 
     coupling_map = None
@@ -110,7 +110,7 @@ def make_quantum_instance(
         backend,
         shots=nb_shots,
         optimization_level=0,
-        initial_layout=None,
+        initial_layout=initial_layout,
         noise_model=noise_model,
         coupling_map=coupling_map,
         skip_qobj_validation=(not is_ibmq_provider(backend)),
