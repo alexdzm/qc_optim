@@ -83,6 +83,19 @@ def make_quantum_instance(
         'ibmq_santiago',
         'ibmq_toronto',
         'ibmq_athens',
+        'ibmq_montreal',
+        'ibmq_16_melbourne',
+        'ibmq_armonk',
+        'ibmq_belem',
+        'ibmq_bogota',
+        'ibmq_casablanca',
+        'ibmq_guadalupe',
+        'ibmq_jakarta',
+        'ibmq_lima',
+        'ibmq_manila',
+        'ibmq_quito',
+        'ibmq_rome',
+        'ibmqx2',
     ]
 
     measurement_error_mitigation_cls = None
