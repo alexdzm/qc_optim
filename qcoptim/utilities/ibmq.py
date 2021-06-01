@@ -75,59 +75,42 @@ def make_quantum_instance(
     -------
     quantum_instance : qiskit QuantumInstance obj
     """
+    IBMQ.load_account()
 
-    premium_devices = [
-        'ibmq_manhattan',
-        'ibmq_paris',
-        'ibmq_qasm_simulator',
-        'ibmq_santiago',
-        'ibmq_toronto',
-        'ibmq_athens',
-        'ibmq_montreal',
-        'ibmq_16_melbourne',
-        'ibmq_armonk',
-        'ibmq_belem',
-        'ibmq_bogota',
-        'ibmq_casablanca',
-        'ibmq_guadalupe',
-        'ibmq_jakarta',
-        'ibmq_lima',
-        'ibmq_manila',
-        'ibmq_quito',
-        'ibmq_rome',
-        'ibmqx2',
-    ]
+    premium_provider = IBMQ.get_provider(
+        hub=hub,
+        group=group,
+        project=project,
+    )
+    free_provider = IBMQ.get_provider(group='open')
 
-    measurement_error_mitigation_cls = None
-    coupling_map = None
+    premium_devices = [bknd.name() for bknd in premium_provider.backends()]
+    free_devices = [bknd.name() for bknd in free_provider.backends()
+                    if bknd.name() not in premium_devices]
 
-    if backend_name[:4] == 'ibmq':
-        IBMQ.load_account()
-        if backend_name in premium_devices:
-            provider = IBMQ.get_provider(
-                hub=hub,
-                group=group,
-                project=project,
-            )
-        else:
-            provider = IBMQ.get_provider(group='open')
-        backend = provider.get_backend(backend_name)
-        if measurement_error_mitigation:
-            measurement_error_mitigation_cls = CompleteMeasFitter
-        if simulate_ibmq:
-            coupling_map = backend.configuration().coupling_map
-            if noise_model is None:
-                noise_model = NoiseModel.from_backend(backend.properties())
-            backend = Aer.get_backend("qasm_simulator")
+    if backend_name in premium_devices:
+        backend = premium_provider.get_backend(backend_name)
+    elif backend_name in free_devices:
+        backend = free_provider.get_backend(backend_name)
     else:
         backend = Aer.get_backend(backend_name)
-        initial_layout = None
+
+    measurement_error_mitigation_cls = None
+    if measurement_error_mitigation:
+        measurement_error_mitigation_cls = CompleteMeasFitter
+
+    coupling_map = None
+    if simulate_ibmq:
+        coupling_map = backend.configuration().coupling_map
+        if noise_model is None:
+            noise_model = NoiseModel.from_backend(backend.properties())
+        backend = Aer.get_backend("qasm_simulator")
 
     return QuantumInstance(
         backend,
         shots=nb_shots,
         optimization_level=0,
-        initial_layout=initial_layout,
+        initial_layout=None,
         noise_model=noise_model,
         coupling_map=coupling_map,
         skip_qobj_validation=(not is_ibmq_provider(backend)),
