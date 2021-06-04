@@ -389,7 +389,8 @@ class CrossFidelity(CostInterface):
         return mean, std
 
 
-def _load_experiment(experiment_idx, results, nb_qubits):
+def _load_experiment(experiment_idx, results, nb_qubits, 
+                     counts_transform=None):
     """
     Parameters
     ----------
@@ -400,6 +401,9 @@ def _load_experiment(experiment_idx, results, nb_qubits):
     nb_qubits : int, or None
         If not None, will raise an error if the number of qubits found in the
         experiment is not equal to passed value
+    counts_transform : callable, optional
+        Function to be called on counts values e.g. downsampling, or
+        measurement error mitigation
 
     Returns
     -------
@@ -413,8 +417,10 @@ def _load_experiment(experiment_idx, results, nb_qubits):
 
     counts_dict = results.get_counts(experiment_idx)
     binarystrings = list(counts_dict.keys())
-    counts = np.array(list(counts_dict.values()))
     num_qubits = len(binarystrings[0])
+    counts = np.array(list(counts_dict.values()))
+    if counts_transform is not None:
+        counts = counts_transform(counts)
 
     # use this to check number of qubits has been consistent
     # over all random unitaries
@@ -427,7 +433,13 @@ def _load_experiment(experiment_idx, results, nb_qubits):
     return binarystrings, counts, num_qubits
 
 
-def _purity_per_u(results, nb_random, names=str, vectorise=False):
+def _purity_per_u(
+    results,
+    nb_random,
+    names=str,
+    vectorise=False,
+    counts_transform=None,
+):
     """
     Extract the contributions towards the evaluation of the purity of a quantum
     state using random single qubit measurements (arxiv:1909.01282), resolved
@@ -442,6 +454,12 @@ def _purity_per_u(results, nb_random, names=str, vectorise=False):
     names : Callable, optional
         Function that maps index of a random circuit to a name of a circuit in
         the qiskit results object
+    vectorise : boolean, optional
+        If True, will vectorise internal calculations. WARNING: this will
+        generate exponentially large matrices in number of qubits.
+    counts_transform : callable, optional
+        Function to be called on counts values e.g. downsampling, or
+        measurement error mitigation
 
     Returns
     -------
@@ -466,15 +484,16 @@ def _purity_per_u(results, nb_random, names=str, vectorise=False):
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
-        hexstrings, counts, nb_qubits = _load_experiment(
-            experiment_idx, results, nb_qubits)
+        binarystrings, counts, nb_qubits = _load_experiment(
+            experiment_idx, results, nb_qubits,
+            counts_transform=counts_transform)
 
         if vectorise:
             auto_func = _vectorised_auto_cross_correlation_single_u
         else:
             auto_func = _auto_cross_correlation_single_u
 
-        tr_rho_2[uidx] = auto_func(hexstrings, counts,)
+        tr_rho_2[uidx] = auto_func(binarystrings, counts,)
 
     # normalisation
     tr_rho_2 = (2**nb_qubits)*tr_rho_2
@@ -489,6 +508,7 @@ def _crosscorrelation_per_u(
     circ_namesA=None,
     circ_namesB=None,
     vectorise=False,
+    counts_transform=None,
 ):
     """
     Function to calculate the offline CrossFidelity between two quantum states
@@ -506,6 +526,12 @@ def _crosscorrelation_per_u(
         Naming function for A results, `int -> str`
     circ_namesB : callable, optional
         Naming function for B results, `int -> str`
+    vectorise : boolean, optional
+        If True, will vectorise internal calculations. WARNING: this will
+        generate exponentially large matrices in number of qubits.
+    counts_transform : callable, optional
+        Function to be called on counts values e.g. downsampling, or
+        measurement error mitigation
 
     Returns
     -------
@@ -546,9 +572,11 @@ def _crosscorrelation_per_u(
                              + ' calculate cross-fidelity.') from missing_exp
 
         P_A_strings, P_A_counts, nb_qubits = _load_experiment(
-            experiment_idx_A, resultsA, nb_qubits)
+            experiment_idx_A, resultsA, nb_qubits,
+            counts_transform=counts_transform)
         P_B_strings, P_B_counts, nb_qubits = _load_experiment(
-            experiment_idx_B, resultsB, nb_qubits)
+            experiment_idx_B, resultsB, nb_qubits,
+            counts_transform=counts_transform)
 
         if vectorise:
             cross_func = _vectorised_cross_correlation_single_u
