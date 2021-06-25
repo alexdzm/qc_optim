@@ -9,6 +9,7 @@ import numpy as np
 from qiskit import Aer, QuantumCircuit
 from qiskit.circuit import Measure
 from qiskit.utils import QuantumInstance
+from qiskit.aqua.utils.backend_utils import is_simulator_backend
 
 from qcoptim.ansatz import RandomAnsatz, TrivialAnsatz
 from qcoptim.utilities import (
@@ -21,6 +22,40 @@ from qcoptim.utilities.pytket import compile_for_backend
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
 _TRANSPILERS = ['instance', 'pytket']
+
+
+def test_make_quantum_instance():
+    """
+    ensure can make sim/device quantum instances and noisy sims from devices
+    """
+
+    # device instance
+    instance = make_quantum_instance(
+        _TEST_IBMQ_BACKEND,
+        simulate_ibmq=False,
+    )
+    assert not is_simulator_backend(instance.backend)
+
+    # simulated device instance
+    instance = make_quantum_instance(
+        _TEST_IBMQ_BACKEND,
+        simulate_ibmq=True,
+    )
+    assert is_simulator_backend(instance.backend)
+
+    # sim instance
+    instance = make_quantum_instance(
+        'aer_simulator',
+        simulate_ibmq=False,
+    )
+    assert is_simulator_backend(instance.backend)
+
+    # this combination of args used to cause crash
+    instance = make_quantum_instance(
+        'aer_simulator',
+        simulate_ibmq=False,
+    )
+    assert is_simulator_backend(instance.backend)
 
 
 @pytest.mark.parametrize("device", ['ibmq_santiago', 'ibmq_manhattan'])

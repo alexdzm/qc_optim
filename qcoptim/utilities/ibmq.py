@@ -4,7 +4,10 @@ Functions and classes for interacting with IBMQ backends
 
 from qiskit import IBMQ, Aer, QuantumRegister
 from qiskit.utils import QuantumInstance
-from qiskit.aqua.utils.backend_utils import is_ibmq_provider
+from qiskit.aqua.utils.backend_utils import (
+    is_ibmq_provider,
+    is_simulator_backend,
+)
 from qiskit.ignis.mitigation.measurement import CompleteMeasFitter
 from qiskit.providers.aer import noise
 from qiskit.providers.aer.noise import NoiseModel
@@ -100,7 +103,7 @@ def make_quantum_instance(
         measurement_error_mitigation_cls = CompleteMeasFitter
 
     coupling_map = None
-    if simulate_ibmq:
+    if simulate_ibmq and not is_simulator_backend(backend):
         coupling_map = backend.configuration().coupling_map
         if noise_model is None:
             noise_model = NoiseModel.from_backend(backend.properties())
