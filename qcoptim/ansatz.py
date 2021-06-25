@@ -390,7 +390,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
     Returns ansatz class construted from a qasm object (uses AnsatzFromCircuit
     as base once circuit is created)
     """
-    def __init__(self, qasm, parameterised = None, qubit_names = 'logicals'):
+    def __init__(self, qasm, parameterised = None, qubit_names = 'logicals', **kwargs):
         """
         Creates ansatz. For now only assumes rx, ry and rz gates are parameterised
        
@@ -444,7 +444,7 @@ class AnsatzFromQasm(AnsatzFromCircuit):
             ct+=1
         self._x_sol = x_sol
         c = c.decompose().decompose()
-        super().__init__(c)
+        super().__init__(c, **kwargs)
 
 
 class RandomAnsatz(BaseAnsatz):

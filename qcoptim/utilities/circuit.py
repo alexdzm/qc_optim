@@ -290,6 +290,13 @@ class RandomMeasurementHandler():
         )
 
         # convert measurement instructions to the backend's gateset
+        # ---
+        # NOTE: since the measurements applied are only single qubit unitaries
+        # transpiling at optimization_level=0 is still redundant work because
+        # it should still match e.g. device layout. This could be simplified to
+        # only run the transpiler passes that are needed, but I'm not familiar
+        # enough with the transpiler passes to do that
+        # ---
         simple_instance = QuantumInstance(
             self.instance.backend, optimization_level=0)
         self._meas_circuits = simple_instance.transpile(self._meas_circuits)
