@@ -263,7 +263,7 @@ class CrossFidelity(CostInterface):
         self,
         results,
         name='',
-        vectorise=True,
+        vectorise=False,
         **kwargs
     ):
         """
@@ -643,7 +643,7 @@ def _cross_correlation_single_u(
                 len(sA)*sp.spatial.distance.hamming(list(sA), list(sAprime))
             )
             corr_fixed_u += (
-                (-2)**(-hamming_distance) * P_1_sA*P_2_sAprime
+                (-2.)**(-hamming_distance) * P_1_sA*P_2_sAprime
             )
 
     return corr_fixed_u
@@ -695,7 +695,7 @@ def _auto_cross_correlation_single_u(P_1_strings, P_1_counts):
                 )
                 # bias corrected
                 corr_fixed_u += (
-                    (-2)**(-hamming_distance) * P_1_sA*P_1_sAprime
+                    (-2.)**(-hamming_distance) * P_1_sA*P_1_sAprime
                     * num_measurements / (num_measurements - 1)
                 )
 
@@ -703,9 +703,9 @@ def _auto_cross_correlation_single_u(P_1_strings, P_1_counts):
 
 
 @functools.lru_cache(maxsize=1)
-def _make_full_hamming_distance_matrix(num_qubits):
+def _make_full_expon_hamming_distance_matrix(num_qubits):
     """ """
-    return np.count_nonzero(
+    return (-2.) ** (-1.*np.count_nonzero(
         (
             np.array(
                 [list(format(val, '0'+str(num_qubits)+'b'))
@@ -717,12 +717,14 @@ def _make_full_hamming_distance_matrix(num_qubits):
             )[np.newaxis, :]
         ),
         axis=2,
-    )
+    ))
 
 
-def _make_hamming_distance_matrix(binstrings_a, binstrings_b, num_qubits):
+def _make_expon_hamming_distance_matrix(
+    binstrings_a, binstrings_b, num_qubits
+):
     """ """
-    full_distance_matrix = _make_full_hamming_distance_matrix(num_qubits)
+    full_distance_matrix = _make_full_expon_hamming_distance_matrix(num_qubits)
     idx_a = [int(binval, 2) for binval in binstrings_a]
     idx_b = [int(binval, 2) for binval in binstrings_b]
     return full_distance_matrix[np.ix_(idx_a, idx_b)]
@@ -770,14 +772,10 @@ def _vectorised_cross_correlation_single_u(
     P_1_dist = P_1_counts / np.sum(P_1_counts)
     P_2_dist = P_2_counts / np.sum(P_2_counts)
 
-    hamming_distances = _make_hamming_distance_matrix(
+    expon_hamming_distances = _make_expon_hamming_distance_matrix(
         P_1_strings, P_2_strings, num_qubits)
 
-    return np.sum(
-        (-2.) ** (-1*hamming_distances)
-        * P_1_dist[:, np.newaxis]
-        * P_2_dist[np.newaxis, :]
-    )
+    return np.dot(P_1_dist, np.dot(expon_hamming_distances, P_2_dist))
 
 
 def _vectorised_auto_cross_correlation_single_u(P_1_strings, P_1_counts):
@@ -811,19 +809,12 @@ def _vectorised_auto_cross_correlation_single_u(P_1_strings, P_1_counts):
     num_measurements = np.sum(P_1_counts)
     P_1_dist = P_1_counts / num_measurements
 
-    hamming_distances = _make_hamming_distance_matrix(
+    expon_hamming_distances = _make_expon_hamming_distance_matrix(
         P_1_strings, P_1_strings, num_qubits)
 
-    vectorised_sum = (
-        (-2.) ** (-1*hamming_distances)
-        * P_1_dist[:, np.newaxis]
-        * P_1_dist[np.newaxis, :]
+    vectorised_sum = np.dot(
+        P_1_dist, np.dot(expon_hamming_distances, P_1_dist)
     )
 
     # correct bias
-    vectorised_sum = (
-        vectorised_sum * num_measurements
-        - np.diag(P_1_dist)
-    ) / (num_measurements - 1)
-
-    return np.sum(vectorised_sum)
+    return (vectorised_sum * num_measurements - 1) / (num_measurements - 1)

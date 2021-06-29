@@ -97,22 +97,22 @@ def test_cross_fidelity(transpiler):
         results, vectorise=True)
     tmp1, tmp2 = crossfid.evaluate_cost_and_std(
         results, vectorise=False)
-    assert np.isclose(same, tmp1)
-    assert np.isclose(same_std, tmp2)
+    assert np.isclose(same, tmp1)  # , atol=0.01
+    assert np.isclose(same_std, tmp2)  # , atol=0.01
 
     ortho, ortho_std = crossfid_ortho.evaluate_cost_and_std(
         results, vectorise=True)
     tmp1, tmp2 = crossfid_ortho.evaluate_cost_and_std(
         results, vectorise=False)
-    assert np.isclose(ortho, tmp1)
-    assert np.isclose(ortho_std, tmp2)
+    assert np.isclose(ortho, tmp1)  # , atol=0.01
+    assert np.isclose(ortho_std, tmp2)  # , atol=0.01
 
     superpos, superpos_std = crossfid_superpos.evaluate_cost_and_std(
         results, vectorise=True)
     tmp1, tmp2 = crossfid_superpos.evaluate_cost_and_std(
         results, vectorise=False)
-    assert np.isclose(superpos, tmp1)
-    assert np.isclose(superpos_std, tmp2)
+    assert np.isclose(superpos, tmp1)  # , atol=0.01
+    assert np.isclose(superpos_std, tmp2)  # , atol=0.01
 
     for mean, std, target in zip(
         [same, ortho, superpos],

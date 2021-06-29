@@ -3,12 +3,13 @@ Circuit utilities
 """
 
 import numpy as np
-from numpy import pi, sin, cos
+from numpy import pi, sin, cos, sqrt
 from numpy import arccos as acos
 from numpy import arctan as atan
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import Measure
+from qiskit.circuit.library import RZGate
 from qiskit.utils import QuantumInstance
 from qiskit.quantum_info import random_unitary
 
@@ -53,6 +54,35 @@ def simplify_rotation_angles(circuit):
     qasm_eval = '\n'.join(eval_lines)
 
     return QuantumCircuit.from_qasm_str(qasm_eval)
+
+
+def zero_rotation_angles(circuit):
+    """
+    Transpiled circuits can sometimes end up with rotation gates where the
+    angles are given as complicated expressions (even when the parameters are
+    bound), which often cannot be drawn on screen. This function set all of
+    those rotation parameters to zero.
+
+    Assumes circuit has been transpiled into the qiskit basis set:
+    {sqrt{X}, Rz, CX} and so only Rz gates are rotations.
+
+    Parameters
+    ----------
+    circuit : qiskit.QuantumCircuit
+        Circuit to simplify
+
+    Returns
+    -------
+    simplified_circuit : qiskit.QuantumCircuit
+        Copy of the circuit with rotation angles set to zero
+    """
+    circ = circuit.copy()
+
+    for instr in circ.data:
+        if type(instr[0]) in [RZGate]:
+            instr[0].params = [0.]
+
+    return circ
 
 
 def transpile_circuit(
