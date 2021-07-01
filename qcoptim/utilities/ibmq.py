@@ -11,6 +11,7 @@ from qiskit.aqua.utils.backend_utils import (
 from qiskit.ignis.mitigation.measurement import CompleteMeasFitter
 from qiskit.providers.aer import noise
 from qiskit.providers.aer.noise import NoiseModel
+from qiskit.result import Result
 
 NB_SHOTS_DEFAULT = 256
 OPTIMIZATION_LEVEL_DEFAULT = 1
@@ -32,6 +33,61 @@ FREE_LIST_DEVICES = [
     'ibmq_rome',
     'qasm_simulator',
 ]
+
+
+class ProcessedResult(object):
+    """
+    The qiskit results class can be slow. This class pre-processes a results
+    object to make calls to `.get_counts()` much faster. It wraps the
+    qiskit.result.Result obj used to construct it and dispatches all other
+    calls to that object.
+
+    Python obj wrapping code from:
+    https://code.activestate.com/recipes/577555-object-wrapper-class
+    """
+    def __init__(self, raw_results):
+        """
+        Parameters
+        ----------
+        raw_results : qiskit.result.Result
+            Results object to process
+        """
+        self._wrapped_results = raw_results
+
+        # make results access maps for speed
+        self.results_access_map = {
+            res.header.name: idx for idx, res in enumerate(raw_results.results)
+        }
+
+        # get and cache counts dictionary
+        self.processed_counts = []
+        self.int_keys = []
+        for idx in range(len(raw_results.results)):
+            _counts_dict = raw_results.get_counts(idx)
+            self.processed_counts.append(_counts_dict)
+            int_keys = [int(binval, 2) for binval in _counts_dict.keys()]
+            self.int_keys.append(int_keys)
+
+    def __getattr__(self, attr):
+        # see if this object has attr
+        # NOTE do not use hasattr, it goes into
+        # infinite recurrsion
+        if attr in self.__dict__:
+            # this object has it
+            return getattr(self, attr)
+        # proxy to the wrapped object
+        return getattr(self._wrapped_results, attr)
+
+    def get_counts(self, access_key):
+        """ """
+        if not isinstance(access_key, (int, str)):
+            # fall back on wrapped results method
+            return self._wrapped_results.get_counts(access_key)
+
+        if isinstance(access_key, str):
+            access_key = self.results_access_map(access_key)
+
+        return self.processed_counts[access_key]
 
 
 def make_quantum_instance(

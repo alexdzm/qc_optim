@@ -11,14 +11,19 @@ from qiskit.aqua import QuantumInstance
 
 from qcoptim.ansatz import TrivialAnsatz, RandomAnsatz
 from qcoptim.cost import CrossFidelity
-from qcoptim.utilities import RandomMeasurementHandler, make_quantum_instance
+from qcoptim.utilities import (
+    RandomMeasurementHandler,
+    make_quantum_instance,
+    ProcessedResult,
+)
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
 _TRANSPILERS = ['instance', 'pytket']
 
 
 @pytest.mark.parametrize("transpiler", _TRANSPILERS)
-def test_cross_fidelity(transpiler):
+@pytest.mark.parametrize("process_result", [False, True])
+def test_cross_fidelity(transpiler, process_result):
     """ """
     num_qubits = 2
     num_random = 500
@@ -45,7 +50,9 @@ def test_cross_fidelity(transpiler):
     circs = init_crossfid.bind_params_to_meas([])
     assert len(circs) == num_random
     results = exe_instance.execute(circs)
-    comparison_results = init_crossfid.tag_results_metadata(results)
+    # comparison_results = init_crossfid.tag_results_metadata(results)
+    if process_result:
+        results = ProcessedResult(results)
 
     # new objs to compute cross-fidelity overlaps
     crossfid = CrossFidelity(
@@ -54,7 +61,7 @@ def test_cross_fidelity(transpiler):
         transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
-        comparison_results=comparison_results,
+        comparison_results=results,
         prefixA='new-data',
         prefixB='init-data',
     )
@@ -64,7 +71,7 @@ def test_cross_fidelity(transpiler):
         transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
-        comparison_results=comparison_results,
+        comparison_results=results,
         prefixA='ortho-data',
         prefixB='init-data',
     )
@@ -74,7 +81,7 @@ def test_cross_fidelity(transpiler):
         transpiler=transpiler,
         nb_random=num_random,
         seed=seed,
-        comparison_results=comparison_results,
+        comparison_results=results,
         prefixA='superpos-data',
         prefixB='init-data',
     )
@@ -92,6 +99,8 @@ def test_cross_fidelity(transpiler):
 
     # compute overlaps and test values
     results = exe_instance.execute(circs)
+    if process_result:
+        results = ProcessedResult(results)
 
     same, same_std = crossfid.evaluate_cost_and_std(
         results, vectorise=True)
@@ -152,14 +161,14 @@ def test_cross_fidelity_subsampling_rand_meas_handler(transpiler):
     circs = init_crossfid.bind_params_to_meas(point)
     assert len(circs) == num_random
     results = exe_instance.execute(circs)
-    comparison_results = init_crossfid.tag_results_metadata(results)
+    # comparison_results = init_crossfid.tag_results_metadata(results)
 
     # make subsampled obj
     crossfid = CrossFidelity(
         ansatz,
         nb_random=num_random//2,
         rand_meas_handler=rand_meas_handler,
-        comparison_results=comparison_results,
+        comparison_results=results,
         prefixB=circ_name(''),
     )
 

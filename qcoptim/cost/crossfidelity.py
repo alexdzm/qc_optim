@@ -12,6 +12,7 @@ from qiskit import QiskitError
 from qiskit.result import Result
 
 from ..utilities import (
+    ProcessedResult,
     bootstrap_resample,
     RandomMeasurementHandler,
 )
@@ -189,7 +190,7 @@ class CrossFidelity(CostInterface):
                     + ' crossfidelity_metadata.'
                 )
 
-            if isinstance(results, Result):
+            if isinstance(results, (Result, ProcessedResult)):
                 self._comparison_results = results
             elif isinstance(results, dict):
                 self._comparison_results = Result.from_dict(results)
@@ -198,34 +199,34 @@ class CrossFidelity(CostInterface):
                     'comparison_results recieved type '+f'{type(results)}'
                 )
 
-    def tag_results_metadata(self, results):
-        """
-        Adds in CrossFidelity metadata to a results object. This can be
-        used to ensure that two results sets are compatible.
+    # def tag_results_metadata(self, results):
+    #     """
+    #     Adds in CrossFidelity metadata to a results object. This can be
+    #     used to ensure that two results sets are compatible.
 
-        Parameters
-        ----------
-        results : qiskit.result.Result, dict
-            The results data to process
+    #     Parameters
+    #     ----------
+    #     results : qiskit.result.Result, dict
+    #         The results data to process
 
-        Returns
-        -------
-        results : dict
-            Results dictionary with the CrossFidelity metadata added
-        """
+    #     Returns
+    #     -------
+    #     results : dict
+    #         Results dictionary with the CrossFidelity metadata added
+    #     """
 
-        # convert results to dict if needed
-        if not isinstance(results, dict):
-            results = results.to_dict()
-        # add CrossFidelity metadata
-        results.update({
-            'crossfidelity_metadata': {
-                'seed': self.seed,
-                'nb_random': self.nb_random,
-                'prefixA': self._rand_meas_handler.circ_name(''),
-                }
-            })
-        return results
+    #     # convert results to dict if needed
+    #     if not isinstance(results, dict):
+    #         results = results.to_dict()
+    #     # add CrossFidelity metadata
+    #     results.update({
+    #         'crossfidelity_metadata': {
+    #             'seed': self.seed,
+    #             'nb_random': self.nb_random,
+    #             'prefixA': self._rand_meas_handler.circ_name(''),
+    #             }
+    #         })
+    #     return results
 
     def bind_params_to_meas(self, params=None, params_names=None):
         """
@@ -396,19 +397,21 @@ def _load_experiment(experiment_idx, results, nb_qubits,
     ----------
     experiment_idx : int
         Index of experiment to access
-    results : qiskit.result.Result
+    results : qiskit.result.Result OR ProcessedResult
         Results object
     nb_qubits : int, or None
         If not None, will raise an error if the number of qubits found in the
         experiment is not equal to passed value
     counts_transform : callable, optional
-        Function to be called on counts values e.g. downsampling, or
+        Function to be called on counts dict e.g. downsampling, or
         measurement error mitigation
 
     Returns
     -------
-    binarystrings : list[str]
+    bin_counts_keys : list[str]
         Keys of the counts, given as binary strings
+    int_counts_keys : list[int]
+        Keys of the counts, given as ints
     counts : numpy.ndarray
         Numpy array with the measurement counts
     nb_qubits : int
@@ -416,11 +419,23 @@ def _load_experiment(experiment_idx, results, nb_qubits,
     """
 
     counts_dict = results.get_counts(experiment_idx)
-    binarystrings = list(counts_dict.keys())
-    num_qubits = len(binarystrings[0])
-    counts = np.array(list(counts_dict.values()))
     if counts_transform is not None:
-        counts = counts_transform(counts)
+        counts_dict = counts_transform(counts_dict)
+    bin_counts_keys = list(counts_dict.keys())
+    num_qubits = len(bin_counts_keys[0])
+    counts = np.array(list(counts_dict.values()))
+
+    if isinstance(results, ProcessedResult):
+        int_counts_keys = results.int_keys[experiment_idx]
+
+        # quick consistency check
+        if not int_counts_keys[0] == int(bin_counts_keys[0], 2):
+            raise ValueError(
+                'something has gone wrong with loading processed results!'
+            )
+
+    else:
+        int_counts_keys = [int(binval, 2) for binval in bin_counts_keys]
 
     # use this to check number of qubits has been consistent
     # over all random unitaries
@@ -430,7 +445,7 @@ def _load_experiment(experiment_idx, results, nb_qubits,
             + f'{num_qubits}'
         )
 
-    return binarystrings, counts, num_qubits
+    return bin_counts_keys, int_counts_keys, counts, num_qubits
 
 
 def _purity_per_u(
@@ -458,7 +473,7 @@ def _purity_per_u(
         If True, will vectorise internal calculations. WARNING: this will
         generate exponentially large matrices in number of qubits.
     counts_transform : callable, optional
-        Function to be called on counts values e.g. downsampling, or
+        Function to be called on counts dict e.g. downsampling, or
         measurement error mitigation
 
     Returns
@@ -484,7 +499,7 @@ def _purity_per_u(
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
-        binarystrings, counts, nb_qubits = _load_experiment(
+        bin_counts_keys, int_counts_keys, counts, nb_qubits = _load_experiment(
             experiment_idx, results, nb_qubits,
             counts_transform=counts_transform)
 
@@ -493,7 +508,7 @@ def _purity_per_u(
         else:
             auto_func = _auto_cross_correlation_single_u
 
-        tr_rho_2[uidx] = auto_func(binarystrings, counts,)
+        tr_rho_2[uidx] = auto_func(bin_counts_keys, int_counts_keys, counts,)
 
     # normalisation
     tr_rho_2 = (2**nb_qubits)*tr_rho_2
@@ -530,7 +545,7 @@ def _crosscorrelation_per_u(
         If True, will vectorise internal calculations. WARNING: this will
         generate exponentially large matrices in number of qubits.
     counts_transform : callable, optional
-        Function to be called on counts values e.g. downsampling, or
+        Function to be called on counts dict e.g. downsampling, or
         measurement error mitigation
 
     Returns
@@ -571,10 +586,10 @@ def _crosscorrelation_per_u(
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
-        P_A_strings, P_A_counts, nb_qubits = _load_experiment(
+        P_A_binstrings, P_A_ints, P_A_counts, nb_qubits = _load_experiment(
             experiment_idx_A, resultsA, nb_qubits,
             counts_transform=counts_transform)
-        P_B_strings, P_B_counts, nb_qubits = _load_experiment(
+        P_B_binstrings, P_B_ints, P_B_counts, nb_qubits = _load_experiment(
             experiment_idx_B, resultsB, nb_qubits,
             counts_transform=counts_transform)
 
@@ -584,8 +599,8 @@ def _crosscorrelation_per_u(
             cross_func = _cross_correlation_single_u
 
         tr_rhoA_rhoB[uidx] = cross_func(
-            P_A_strings, P_A_counts,
-            P_B_strings, P_B_counts,
+            P_A_binstrings, P_A_ints, P_A_counts,
+            P_B_binstrings, P_B_ints, P_B_counts,
         )
 
     # normalisations
@@ -596,8 +611,10 @@ def _crosscorrelation_per_u(
 
 def _cross_correlation_single_u(
     P_1_strings,
+    P_1_ints,
     P_1_counts,
     P_2_strings,
+    P_2_ints,
     P_2_counts,
 ):
     """
@@ -610,6 +627,8 @@ def _cross_correlation_single_u(
     ----------
     P_1_strings : tuple[str]
         List of measurement strings in little-endian binary for distribution 1
+    P_1_ints : tuple[int]
+        List of int repr of measurement strings on qubit 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
@@ -617,6 +636,8 @@ def _cross_correlation_single_u(
         strings (in corresponding order) given by P_1_strings
     P_2_strings : tuple[str]
         List of measurement strings in little-endian binary for distribution 2
+    P_2_ints : tuple[int]
+        List of int repr of measurement strings on qubit 2
     P_2_counts : np.ndarray
         Counts histogram for the measurments on qubit 2
         P^{(2)}_U(s_B) = Tr[ U_B rho_2 U^dagger_B |s_B rangle langle s_B| ]
@@ -649,7 +670,7 @@ def _cross_correlation_single_u(
     return corr_fixed_u
 
 
-def _auto_cross_correlation_single_u(P_1_strings, P_1_counts):
+def _auto_cross_correlation_single_u(P_1_strings, P_1_ints, P_1_counts):
     """
     Carries out the inner loop purity calculation of arxiv:1909.01282 and
     arxiv:1801.00999, etc. In contrast to the two-source calculation above
@@ -661,6 +682,8 @@ def _auto_cross_correlation_single_u(P_1_strings, P_1_counts):
     ----------
     P_1_strings : tuple[str]
         List of measurement strings in little-endian binary for distribution 1
+    P_1_ints : tuple[int]
+        List of int repr of measurement strings on qubit 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
@@ -721,19 +744,19 @@ def _make_full_expon_hamming_distance_matrix(num_qubits):
 
 
 def _make_expon_hamming_distance_matrix(
-    binstrings_a, binstrings_b, num_qubits
+    int_keys_a, int_keys_b, num_qubits
 ):
     """ """
     full_distance_matrix = _make_full_expon_hamming_distance_matrix(num_qubits)
-    idx_a = [int(binval, 2) for binval in binstrings_a]
-    idx_b = [int(binval, 2) for binval in binstrings_b]
-    return full_distance_matrix[np.ix_(idx_a, idx_b)]
+    return full_distance_matrix[np.ix_(int_keys_a, int_keys_b)]
 
 
 def _vectorised_cross_correlation_single_u(
     P_1_strings,
+    P_1_ints,
     P_1_counts,
     P_2_strings,
+    P_2_ints,
     P_2_counts,
 ):
     """
@@ -748,6 +771,8 @@ def _vectorised_cross_correlation_single_u(
     ----------
     P_1_strings : tuple[str]
         List of measurement strings in little-endian binary for distribution 1
+    P_1_ints : tuple[int]
+        List of int repr of measurement strings on qubit 1
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
@@ -755,6 +780,8 @@ def _vectorised_cross_correlation_single_u(
         strings (in corresponding order) given by P_1_strings
     P_2_strings : tuple[str]
         List of measurement strings in little-endian binary for distribution 2
+    P_2_ints : tuple[int]
+        List of int repr of measurement strings on qubit 2
     P_2_counts : np.ndarray
         Counts histogram for the measurments on qubit 2
         P^{(2)}_U(s_B) = Tr[ U_B rho_2 U^dagger_B |s_B rangle langle s_B| ]
@@ -773,12 +800,14 @@ def _vectorised_cross_correlation_single_u(
     P_2_dist = P_2_counts / np.sum(P_2_counts)
 
     expon_hamming_distances = _make_expon_hamming_distance_matrix(
-        P_1_strings, P_2_strings, num_qubits)
+        P_1_ints, P_2_ints, num_qubits)
 
     return np.dot(P_1_dist, np.dot(expon_hamming_distances, P_2_dist))
 
 
-def _vectorised_auto_cross_correlation_single_u(P_1_strings, P_1_counts):
+def _vectorised_auto_cross_correlation_single_u(
+    P_1_strings, P_1_ints, P_1_counts
+):
     """
     Carries out the inner loop purity calculation of arxiv:1909.01282 and
     arxiv:1801.00999, etc. In contrast to the two-source calculation above
@@ -792,6 +821,8 @@ def _vectorised_auto_cross_correlation_single_u(P_1_strings, P_1_counts):
     ----------
     P_1_strings : tuple[str]
         List of measurement strings in little-endian binary for distribution 1
+    P_1_ints : tuple[int]
+        List of int repr of measurement strings
     P_1_counts : np.ndarray
         Counts histogram for the measurments on qubit 1
         P^{(1)}_U(s_A) = Tr[ U_A rho_1 U^dagger_A |s_A rangle langle s_A| ]
@@ -810,7 +841,7 @@ def _vectorised_auto_cross_correlation_single_u(P_1_strings, P_1_counts):
     P_1_dist = P_1_counts / num_measurements
 
     expon_hamming_distances = _make_expon_hamming_distance_matrix(
-        P_1_strings, P_1_strings, num_qubits)
+        P_1_ints, P_1_ints, num_qubits)
 
     vectorised_sum = np.dot(
         P_1_dist, np.dot(expon_hamming_distances, P_1_dist)
