@@ -2,6 +2,8 @@
 Functions and classes for interacting with IBMQ backends
 """
 
+import numpy as np
+
 from qiskit import IBMQ, Aer, QuantumRegister
 from qiskit.utils import QuantumInstance
 from qiskit.aqua.utils.backend_utils import (
@@ -45,12 +47,15 @@ class ProcessedResult(object):
     Python obj wrapping code from:
     https://code.activestate.com/recipes/577555-object-wrapper-class
     """
-    def __init__(self, raw_results):
+    def __init__(self, raw_results, expand=False):
         """
         Parameters
         ----------
         raw_results : qiskit.result.Result
             Results object to process
+        expand : boolean, default False
+            If set to True, counts histogram expanded to have 2**(n_qubits)
+            entries, i.e. including all zeros excluded by qiskit
         """
         self._wrapped_results = raw_results
 
@@ -62,11 +67,34 @@ class ProcessedResult(object):
         # get and cache counts dictionary
         self.processed_counts = []
         self.int_keys = []
-        for idx in range(len(raw_results.results)):
+        for idx, res in enumerate(raw_results.results):
             _counts_dict = raw_results.get_counts(idx)
-            self.processed_counts.append(_counts_dict)
-            int_keys = [int(binval, 2) for binval in _counts_dict.keys()]
-            self.int_keys.append(int_keys)
+
+            if expand:
+
+                n_qubits = res.header.n_qubits
+                self.int_keys.append(np.arange(2**n_qubits))
+                tmp = {}
+                for val in range(2**n_qubits):
+                    meas_str = format(
+                        int(str(bin(val))[2:], 2), '0{}b'.format(n_qubits)
+                    )
+                    tmp[meas_str] = _counts_dict.get(meas_str, 0)
+                self.processed_counts.append(tmp)
+
+            else:
+
+                int_keys = [int(binval, 2) for binval in _counts_dict.keys()]
+
+                # sort based on int_keys and save
+                _order = np.argsort(int_keys)
+                self.int_keys.append(np.array(int_keys)[_order])
+                self.processed_counts.append(
+                    dict(zip(
+                        np.array(list(_counts_dict.keys()))[_order],
+                        np.array(list(_counts_dict.values()))[_order]
+                    ))
+                )
 
     def __getattr__(self, attr):
         # see if this object has attr
