@@ -37,15 +37,10 @@ FREE_LIST_DEVICES = [
 ]
 
 
-class ProcessedResult(object):
+class ProcessedResult(Result):
     """
-    The qiskit results class can be slow. This class pre-processes a results
-    object to make calls to `.get_counts()` much faster. It wraps the
-    qiskit.result.Result obj used to construct it and dispatches all other
-    calls to that object.
-
-    Python obj wrapping code from:
-    https://code.activestate.com/recipes/577555-object-wrapper-class
+    The qiskit results class can be slow. This derived class pre-processes a
+    results object to make calls to `.get_counts()` much faster
     """
     def __init__(self, raw_results, expand=False):
         """
@@ -57,7 +52,29 @@ class ProcessedResult(object):
             If set to True, counts histogram expanded to have 2**(n_qubits)
             entries, i.e. including all zeros excluded by qiskit
         """
-        self._wrapped_results = raw_results
+
+        # call base class constructor
+        _date = None
+        if hasattr(raw_results, 'date'):
+            _date = raw_results.date
+        _status = None
+        if hasattr(raw_results, 'status'):
+            _status = raw_results.status
+        _header = None
+        if hasattr(raw_results, 'header'):
+            _header = raw_results.header
+        super().__init__(
+            backend_name=raw_results.backend_name,
+            backend_version=raw_results.backend_version,
+            qobj_id=raw_results.qobj_id,
+            job_id=raw_results.job_id,
+            success=raw_results.success,
+            results=raw_results.results,
+            date=_date,
+            status=_status,
+            header=_header,
+            **raw_results._metadata,
+        )
 
         # make results access maps for speed
         self.results_access_map = {
@@ -96,26 +113,76 @@ class ProcessedResult(object):
                     ))
                 )
 
-    def __getattr__(self, attr):
-        # see if this object has attr
-        # NOTE do not use hasattr, it goes into
-        # infinite recurrsion
-        if attr in self.__dict__:
-            # this object has it
-            return getattr(self, attr)
-        # proxy to the wrapped object
-        return getattr(self._wrapped_results, attr)
-
     def get_counts(self, access_key):
         """ """
         if not isinstance(access_key, (int, str)):
-            # fall back on wrapped results method
-            return self._wrapped_results.get_counts(access_key)
+            # fall back on parent class method
+            return super().get_counts(access_key)
 
         if isinstance(access_key, str):
-            access_key = self.results_access_map(access_key)
+            access_key = self.results_access_map[access_key]
 
         return self.processed_counts[access_key]
+
+    def combine_counts(self, names, save_name):
+        """
+        Parameters
+        ----------
+        names : list[int] OR list[str]
+            List of experiments indexes (as either ints or strings) to combine
+        save_name : str
+            Name to use to save combined counts
+        """
+        if len(names) == 0:
+            # skip if not passed any experiments
+            return
+
+        if save_name in self.results_access_map:
+            # skip if already have a result with this name
+            return
+
+        if not all(isinstance(_nm, (int, str)) for _nm in names):
+            raise TypeError(
+                'Can only combine counts using str and int experiment'
+                + ' references.'
+            )
+
+        n_qubits = None
+        summed_counts = None
+        for exp_name in names:
+            if isinstance(exp_name, int):
+                _idx = exp_name
+            elif isinstance(exp_name, str):
+                _idx = self.results_access_map[exp_name]
+
+            tmp_n_qubits = self.results[_idx].header.n_qubits
+            if n_qubits is None:
+                n_qubits = tmp_n_qubits
+            elif n_qubits != tmp_n_qubits:
+                raise ValueError(
+                    'Trying to combine incompatible experiments, with'
+                    + ' different numbers of qubits'
+                )
+            if summed_counts is None:
+                summed_counts = np.zeros(2**n_qubits, dtype=int)
+
+            summed_counts[self.int_keys[_idx]] += np.array(
+                list(self.processed_counts[_idx].values())
+            )
+
+        # compress by removing zeros
+        _nonzero_idx = np.nonzero(summed_counts)
+        int_keys = np.arange(2**n_qubits)[_nonzero_idx]
+        meas_strs = [
+            format(int(str(bin(val))[2:], 2), '0{}b'.format(n_qubits))
+            for val in int_keys
+        ]
+
+        self.results_access_map[save_name] = len(self.results_access_map)
+        self.int_keys.append(int_keys)
+        self.processed_counts.append(
+            dict(zip(meas_strs, summed_counts[_nonzero_idx]))
+        )
 
 
 def make_quantum_instance(
