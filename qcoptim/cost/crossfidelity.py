@@ -8,7 +8,7 @@ import functools
 import numpy as np
 import scipy as sp
 
-from qiskit import QiskitError
+# from qiskit import QiskitError
 from qiskit.result import Result
 
 from ..utilities import (
@@ -190,10 +190,11 @@ class CrossFidelity(CostInterface):
                     + ' crossfidelity_metadata.'
                 )
 
-            if isinstance(results, (Result, ProcessedResult)):
+            if isinstance(results, Result):
                 self._comparison_results = results
             elif isinstance(results, dict):
-                self._comparison_results = Result.from_dict(results)
+                self._comparison_results = ProcessedResult(
+                    Result.from_dict(results))
             else:
                 raise TypeError(
                     'comparison_results recieved type '+f'{type(results)}'
@@ -329,37 +330,91 @@ class CrossFidelity(CostInterface):
             raise ValueError('No comparison results set has been passed to'
                              + ' CrossFidelity obj.')
 
-        # circuit naming functions
         def circ_namesA(idx):
             return name + self._rand_meas_handler.circ_name(idx)
 
         def circ_namesB(idx):
             return self._prefixB + f'{idx}'
 
-        dist_tr_rhoA_rhoB = _crosscorrelation_per_u(
-            results, self._comparison_results, self.nb_random,
-            circ_namesA=circ_namesA, circ_namesB=circ_namesB,
-            vectorise=vectorise,
-        )
-        dist_tr_rhoA_2 = _purity_per_u(
-            results, self.nb_random, names=circ_namesA, vectorise=vectorise)
-        dist_tr_rhoB_2 = _purity_per_u(
-            self._comparison_results, self.nb_random, names=circ_namesB, 
-            vectorise=vectorise)
+        if self._num_bootstraps > 0:
 
-        # bootstrap resample for means and std-errs
-        tr_rhoA_rhoB, tr_rhoA_rhoB_err = bootstrap_resample(
-            np.mean, dist_tr_rhoA_rhoB, self._num_bootstraps,
-            random_seed=self.seed,
-        )
-        tr_rhoA_2, tr_rhoA_2_err = bootstrap_resample(
-            np.mean, dist_tr_rhoA_2, self._num_bootstraps,
-            random_seed=self.seed,
-        )
-        tr_rhoB_2, tr_rhoB_2_err = bootstrap_resample(
-            np.mean, dist_tr_rhoB_2, self._num_bootstraps,
-            random_seed=self.seed,
-        )
+            # case using bootstrapping to estimate standard error from dist 
+            # of U's
+
+            dist_tr_rhoA_rhoB = _crosscorrelation_per_u(
+                results, self._comparison_results, self.nb_random,
+                circ_namesA=circ_namesA, circ_namesB=circ_namesB,
+                vectorise=vectorise,
+            )
+            dist_tr_rhoA_2 = _purity_per_u(
+                results, self.nb_random, names=circ_namesA, vectorise=vectorise)
+            dist_tr_rhoB_2 = _purity_per_u(
+                self._comparison_results, self.nb_random, names=circ_namesB, 
+                vectorise=vectorise)
+
+            # bootstrap resample for means and std-errs
+            tr_rhoA_rhoB, tr_rhoA_rhoB_err = bootstrap_resample(
+                np.mean, dist_tr_rhoA_rhoB, self._num_bootstraps,
+                random_seed=self.seed,
+            )
+            tr_rhoA_2, tr_rhoA_2_err = bootstrap_resample(
+                np.mean, dist_tr_rhoA_2, self._num_bootstraps,
+                random_seed=self.seed,
+            )
+            tr_rhoB_2, tr_rhoB_2_err = bootstrap_resample(
+                np.mean, dist_tr_rhoB_2, self._num_bootstraps,
+                random_seed=self.seed,
+            )
+
+        else:
+
+            # case without bootstrapping, this only includes standard error
+            # arising from counts spread (currently not even that)
+
+            if isinstance(results, ProcessedResult):
+                tmp_results = results
+            elif isinstance(results, Result):
+                tmp_results = ProcessedResult(results)
+            else:
+                raise TypeError(
+                    'results type not recognised: '+f'{type(results)}')
+            tmp_results.combine_counts([
+                circ_namesA(idx) for idx in range(self.nb_random)],
+                circ_namesA('')
+            )
+
+            if isinstance(self._comparison_results, ProcessedResult):
+                tmp_comparison_results = self._comparison_results
+            elif isinstance(self._comparison_results, Result):
+                tmp_comparison_results = ProcessedResult(
+                    self._comparison_results)
+            else:
+                raise TypeError(
+                    'results type not recognised: '
+                    + f'{type(self._comparison_results)}')
+            tmp_comparison_results.combine_counts([
+                circ_namesB(idx) for idx in range(self.nb_random)],
+                circ_namesB('')
+            )
+
+            def tmp_circ_namesA(idx):
+                return circ_namesA('')
+
+            def tmp_circ_namesB(idx):
+                return circ_namesB('')
+
+            tr_rhoA_rhoB = _crosscorrelation_per_u(
+                tmp_results, tmp_comparison_results, 1,
+                circ_namesA=tmp_circ_namesA, circ_namesB=tmp_circ_namesB,
+                vectorise=vectorise,
+            )[0]
+            tr_rhoA_2 = _purity_per_u(
+                tmp_results, 1, names=tmp_circ_namesA, vectorise=vectorise)[0]
+            tr_rhoB_2 = _purity_per_u(
+                tmp_comparison_results, 1, names=tmp_circ_namesB, 
+                vectorise=vectorise)[0]
+
+            tr_rhoA_rhoB_err, tr_rhoA_2_err, tr_rhoB_2_err = 0, 0, 0
 
         # divide by largest
         if tr_rhoA_2 > tr_rhoB_2:
@@ -390,8 +445,9 @@ class CrossFidelity(CostInterface):
         return mean, std
 
 
-def _load_experiment(experiment_idx, results, nb_qubits, 
-                     counts_transform=None):
+def _load_experiment_single_u(
+    experiment_idx, results, nb_qubits, counts_transform=None
+):
     """
     Parameters
     ----------
@@ -448,6 +504,19 @@ def _load_experiment(experiment_idx, results, nb_qubits,
     return bin_counts_keys, int_counts_keys, counts, num_qubits
 
 
+def _get_results_access_map(results):
+    """ """
+    if isinstance(results, ProcessedResult):
+        return results.results_access_map
+    elif isinstance(results, Result):
+        # make results access maps for speed
+        return {
+            res.header.name: idx for idx, res in enumerate(results.results)
+        }
+
+    raise TypeError('Type of results not recognised: '+f'{type(results)}')
+
+
 def _purity_per_u(
     results,
     nb_random,
@@ -483,11 +552,7 @@ def _purity_per_u(
         each single random measurement
     """
     nb_qubits = None
-
-    # make results access maps for speed
-    results_access_map = {
-        res.header.name: idx for idx, res in enumerate(results.results)
-    }
+    results_access_map = _get_results_access_map(results)
 
     # iterate over the different random unitaries
     tr_rho_2 = np.zeros(nb_random)
@@ -499,7 +564,10 @@ def _purity_per_u(
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
-        bin_counts_keys, int_counts_keys, counts, nb_qubits = _load_experiment(
+        (bin_counts_keys,
+         int_counts_keys,
+         counts,
+         nb_qubits) = _load_experiment_single_u(
             experiment_idx, results, nb_qubits,
             counts_transform=counts_transform)
 
@@ -567,13 +635,8 @@ def _crosscorrelation_per_u(
         def circ_namesB(idx):
             return 'CrossFid' + f'{idx}'
 
-    # make results access maps for speed
-    resultsA_access_map = {
-        res.header.name: idx for idx, res in enumerate(resultsA.results)
-    }
-    resultsB_access_map = {
-        res.header.name: idx for idx, res in enumerate(resultsB.results)
-    }
+    resultsA_access_map = _get_results_access_map(resultsA)
+    resultsB_access_map = _get_results_access_map(resultsB)
 
     # iterate over the different random unitaries
     tr_rhoA_rhoB = np.zeros(nb_random)
@@ -586,10 +649,16 @@ def _crosscorrelation_per_u(
             raise ValueError('Cannot extract matching experiment data to'
                              + ' calculate cross-fidelity.') from missing_exp
 
-        P_A_binstrings, P_A_ints, P_A_counts, nb_qubits = _load_experiment(
+        (P_A_binstrings,
+         P_A_ints,
+         P_A_counts,
+         nb_qubits) = _load_experiment_single_u(
             experiment_idx_A, resultsA, nb_qubits,
             counts_transform=counts_transform)
-        P_B_binstrings, P_B_ints, P_B_counts, nb_qubits = _load_experiment(
+        (P_B_binstrings,
+         P_B_ints,
+         P_B_counts,
+         nb_qubits) = _load_experiment_single_u(
             experiment_idx_B, resultsB, nb_qubits,
             counts_transform=counts_transform)
 
@@ -799,6 +868,15 @@ def _vectorised_cross_correlation_single_u(
     P_1_dist = P_1_counts / np.sum(P_1_counts)
     P_2_dist = P_2_counts / np.sum(P_2_counts)
 
+    # full_distance_matrix = _make_full_expon_hamming_distance_matrix(
+    #     num_qubits)
+    # _slice_indexes = np.ix_(P_1_ints, P_2_ints)
+    # return np.dot(
+    #     P_1_dist, np.dot(
+    #         full_distance_matrix[_slice_indexes], P_2_dist
+    #     )
+    # )
+
     expon_hamming_distances = _make_expon_hamming_distance_matrix(
         P_1_ints, P_2_ints, num_qubits)
 
@@ -846,6 +924,14 @@ def _vectorised_auto_cross_correlation_single_u(
     vectorised_sum = np.dot(
         P_1_dist, np.dot(expon_hamming_distances, P_1_dist)
     )
+
+    # full_distance_matrix = _make_full_expon_hamming_distance_matrix(num_qubits)
+    # _slice_indexes = np.ix_(P_1_ints, P_1_ints)
+    # vectorised_sum = np.dot(
+    #     P_1_dist, np.dot(
+    #         full_distance_matrix[_slice_indexes], P_1_dist
+    #     )
+    # )
 
     # correct bias
     return (vectorised_sum * num_measurements - 1) / (num_measurements - 1)
