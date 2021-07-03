@@ -491,7 +491,9 @@ def _load_experiment_single_u(
             )
 
     else:
-        int_counts_keys = [int(binval, 2) for binval in bin_counts_keys]
+        int_counts_keys = np.array(
+            [int(binval, 2) for binval in bin_counts_keys]
+        )
 
     # use this to check number of qubits has been consistent
     # over all random unitaries
@@ -725,8 +727,19 @@ def _cross_correlation_single_u(
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
     corr_fixed_u = 0
-    for sA, P_1_sA in zip(P_1_strings, P_1_dist):
-        for sAprime, P_2_sAprime in zip(P_2_strings, P_2_dist):
+    for sA, counts_1_sA, P_1_sA in zip(P_1_strings, P_1_counts, P_1_dist):
+
+        # skip if counts has a zero
+        if counts_1_sA == 0:
+            continue
+
+        for sAprime, counts_2_sAprime, P_2_sAprime in zip(P_2_strings,
+                                                          P_2_counts,
+                                                          P_2_dist):
+
+            # skip if counts has a zero
+            if counts_2_sAprime == 0:
+                continue
 
             # add up contribution
             hamming_distance = int(
@@ -736,7 +749,8 @@ def _cross_correlation_single_u(
                 (-2.)**(-hamming_distance) * P_1_sA*P_2_sAprime
             )
 
-    return corr_fixed_u
+    # normalise counts / (np.sum(P_1_counts) * np.sum(P_2_counts))
+    return corr_fixed_u 
 
 
 def _auto_cross_correlation_single_u(P_1_strings, P_1_ints, P_1_counts):
@@ -771,8 +785,19 @@ def _auto_cross_correlation_single_u(P_1_strings, P_1_ints, P_1_counts):
     # iterate over the elements of the computational basis (that
     # appear in the measurement results)sublimes
     corr_fixed_u = 0
-    for sA, P_1_sA in zip(P_1_strings, P_1_dist):
-        for sAprime, P_1_sAprime in zip(P_1_strings, P_1_dist):
+    for sA, counts_1_sA, P_1_sA in zip(P_1_strings, P_1_counts, P_1_dist):
+
+        # skip if counts has a zero
+        if counts_1_sA == 0:
+            continue
+
+        for sAprime, counts_1_sAprime, P_1_sAprime in zip(P_1_strings,
+                                                          P_1_counts,
+                                                          P_1_dist):
+
+            # skip if counts has a zero
+            if counts_1_sAprime == 0:
+                continue
 
             if sA == sAprime:
                 # bias corrected
@@ -791,6 +816,7 @@ def _auto_cross_correlation_single_u(P_1_strings, P_1_ints, P_1_counts):
                     * num_measurements / (num_measurements - 1)
                 )
 
+    # normalise counts / num_measurements**2
     return corr_fixed_u
 
 
@@ -877,10 +903,21 @@ def _vectorised_cross_correlation_single_u(
     #     )
     # )
 
-    expon_hamming_distances = _make_expon_hamming_distance_matrix(
-        P_1_ints, P_2_ints, num_qubits)
+    # cut down size of arrays as only need the intersection of 1 and 2
+    _, _shared_idxs_1, _shared_idxs_2 = np.intersect1d(
+        P_1_ints, P_2_ints, assume_unique=True, return_indices=True)
 
-    return np.dot(P_1_dist, np.dot(expon_hamming_distances, P_2_dist))
+    expon_hamming_distances = _make_expon_hamming_distance_matrix(
+        P_1_ints[_shared_idxs_1], P_2_ints[_shared_idxs_2], num_qubits)
+
+    # evaluate sum and normalise counts
+    return np.dot(
+        P_1_dist[_shared_idxs_1],
+        np.dot(
+            expon_hamming_distances,
+            P_2_dist[_shared_idxs_2]
+        )
+    )  # / (np.sum(P_1_counts) * np.sum(P_2_counts))
 
 
 def _vectorised_auto_cross_correlation_single_u(
@@ -921,9 +958,10 @@ def _vectorised_auto_cross_correlation_single_u(
     expon_hamming_distances = _make_expon_hamming_distance_matrix(
         P_1_ints, P_1_ints, num_qubits)
 
+    # evaluate sum and normalise counts
     vectorised_sum = np.dot(
         P_1_dist, np.dot(expon_hamming_distances, P_1_dist)
-    )
+    )  # / num_measurements**2
 
     # full_distance_matrix = _make_full_expon_hamming_distance_matrix(num_qubits)
     # _slice_indexes = np.ix_(P_1_ints, P_1_ints)

@@ -237,22 +237,22 @@ def test_cross_fidelity_bootstrapping(crossfid_test_assets, process_result):
         results2, vectorise=True)
     tmp1, tmp2 = crossfid.evaluate_cost_and_std(
         results2, vectorise=False)
-    assert np.isclose(same, tmp1)  # , atol=0.01
-    assert np.isclose(same_std, tmp2)  # , atol=0.01
+    assert np.isclose(same, tmp1, atol=1E-4)  # , atol=0.01
+    assert np.isclose(same_std, tmp2, atol=1E-4)  # , atol=0.01
 
     ortho, ortho_std = crossfid_ortho.evaluate_cost_and_std(
         results2, vectorise=True)
     tmp1, tmp2 = crossfid_ortho.evaluate_cost_and_std(
         results2, vectorise=False)
-    assert np.isclose(ortho, tmp1)  # , atol=0.01
-    assert np.isclose(ortho_std, tmp2)  # , atol=0.01
+    assert np.isclose(ortho, tmp1, atol=1E-4)  # , atol=0.01
+    assert np.isclose(ortho_std, tmp2, atol=1E-4)  # , atol=0.01
 
     superpos, superpos_std = crossfid_superpos.evaluate_cost_and_std(
         results2, vectorise=True)
     tmp1, tmp2 = crossfid_superpos.evaluate_cost_and_std(
         results2, vectorise=False)
-    assert np.isclose(superpos, tmp1)  # , atol=0.01
-    assert np.isclose(superpos_std, tmp2)  # , atol=0.01
+    assert np.isclose(superpos, tmp1, atol=1E-4)  # , atol=0.01
+    assert np.isclose(superpos_std, tmp2, atol=1E-4)  # , atol=0.01
 
     for mean, std, target in zip(
         [same, ortho, superpos],
