@@ -3,6 +3,7 @@ Tests for cost classes and functions
 """
 
 import pytest
+import random
 
 import numpy as np
 
@@ -11,6 +12,12 @@ from qiskit.aqua import QuantumInstance
 
 from qcoptim.ansatz import TrivialAnsatz, RandomAnsatz
 from qcoptim.cost import CrossFidelity
+from qcoptim.cost.crossfidelity import (
+    _cross_correlation_single_u,
+    _vectorised_cross_correlation_single_u,
+    _auto_cross_correlation_single_u,
+    _vectorised_auto_cross_correlation_single_u,
+)
 from qcoptim.utilities import (
     RandomMeasurementHandler,
     make_quantum_instance,
@@ -19,6 +26,75 @@ from qcoptim.utilities import (
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
 _TRANSPILER = 'pytket'
+
+
+def _constrained_sum_sample_pos(n, total):
+    """
+    Return a randomly chosen list of n positive integers summing to total.
+    Each such list is equally likely to occur.
+
+    from: https://stackoverflow.com/questions/3589214/
+    """
+
+    dividers = sorted(random.sample(range(1, total), n - 1))
+    return [a - b for a, b in zip(dividers + [total], [0] + dividers)]
+
+
+def _make_fake_experiment(num_qubits):
+    """ """
+    fake_counts = 2**4
+
+    # random choose number of different basis strs in counts
+    rand_len = np.random.randint(1, min(2**num_qubits, fake_counts))
+
+    meas_ints = np.array(random.sample(range(2**num_qubits), rand_len))
+    meas_strs = [
+        format(int(str(bin(val))[2:], 2), '0{}b'.format(num_qubits))
+        for val in meas_ints
+    ]
+    counts = np.array(_constrained_sum_sample_pos(rand_len, fake_counts))
+
+    return meas_strs, meas_ints, counts
+
+
+@pytest.mark.parametrize("num_qubits", [1, 2, 4, 8])
+def test_vect_vs_nonvect_cross_correlation_single_u(num_qubits):
+    """ """
+
+    # repeat 10 times
+    for _ in range(10):
+        P_1_strings, P_1_ints, P_1_counts = _make_fake_experiment(num_qubits)
+        P_2_strings, P_2_ints, P_2_counts = _make_fake_experiment(num_qubits)
+
+        # cross-correlation
+        non_vect = _cross_correlation_single_u(
+            P_1_strings, P_1_ints, P_1_counts,
+            P_2_strings, P_2_ints, P_2_counts,
+        )
+        vect = _vectorised_cross_correlation_single_u(
+            P_1_strings, P_1_ints, P_1_counts,
+            P_2_strings, P_2_ints, P_2_counts,
+        )
+        assert np.isclose(non_vect, vect)
+
+
+@pytest.mark.parametrize("num_qubits", [1, 2, 4, 8])
+def test_vect_vs_nonvect_auto_cross_correlation_single_u(num_qubits):
+    """ """
+
+    # repeat 10 times
+    for _ in range(10):
+        P_1_strings, P_1_ints, P_1_counts = _make_fake_experiment(num_qubits)
+        P_2_strings, P_2_ints, P_2_counts = _make_fake_experiment(num_qubits)
+
+        # auto-cross-correlation
+        non_vect = _auto_cross_correlation_single_u(
+            P_1_strings, P_1_ints, P_1_counts,
+        )
+        vect = _vectorised_auto_cross_correlation_single_u(
+            P_1_strings, P_1_ints, P_1_counts,
+        )
+        assert np.isclose(non_vect, vect)
 
 
 @pytest.fixture

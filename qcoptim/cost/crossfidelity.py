@@ -903,19 +903,15 @@ def _vectorised_cross_correlation_single_u(
     #     )
     # )
 
-    # cut down size of arrays as only need the intersection of 1 and 2
-    _, _shared_idxs_1, _shared_idxs_2 = np.intersect1d(
-        P_1_ints, P_2_ints, assume_unique=True, return_indices=True)
-
     expon_hamming_distances = _make_expon_hamming_distance_matrix(
-        P_1_ints[_shared_idxs_1], P_2_ints[_shared_idxs_2], num_qubits)
+        P_1_ints, P_2_ints, num_qubits)
 
     # evaluate sum and normalise counts
     return np.dot(
-        P_1_dist[_shared_idxs_1],
+        P_1_dist,
         np.dot(
             expon_hamming_distances,
-            P_2_dist[_shared_idxs_2]
+            P_2_dist
         )
     )  # / (np.sum(P_1_counts) * np.sum(P_2_counts))
 
