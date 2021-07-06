@@ -37,7 +37,7 @@ FREE_LIST_DEVICES = [
 ]
 
 
-class ProcessedResult(Result):
+class FastCountsResult(Result):
     """
     The qiskit results class can be slow. This derived class pre-processes a
     results object to make calls to `.get_counts()` much faster

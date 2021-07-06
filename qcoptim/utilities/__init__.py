@@ -54,7 +54,7 @@ from .core import (
     qTNfromQASM,
     qTNtoQk,
 )
-from .ibmq import ProcessedResult, BackendManager, make_quantum_instance
+from .ibmq import FastCountsResult, BackendManager, make_quantum_instance
 from .stats import resample_histogram, bootstrap_resample
 from .circuit import (
     simplify_rotation_angles,

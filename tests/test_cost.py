@@ -21,7 +21,7 @@ from qcoptim.cost.crossfidelity import (
 from qcoptim.utilities import (
     RandomMeasurementHandler,
     make_quantum_instance,
-    ProcessedResult,
+    FastCountsResult,
 )
 
 _TEST_IBMQ_BACKEND = 'ibmq_santiago'
@@ -240,9 +240,9 @@ def test_cross_fidelity_nobootstrapping(crossfid_test_assets, process_result):
      results1, results2) = crossfid_test_assets
 
     if process_result:
-        results1 = ProcessedResult(results1)
+        results1 = FastCountsResult(results1)
     if process_result:
-        results2 = ProcessedResult(results2)
+        results2 = FastCountsResult(results2)
 
     # set comparison results
     crossfid.comparison_results = results1
@@ -294,9 +294,9 @@ def test_cross_fidelity_bootstrapping(crossfid_test_assets, process_result):
      results1, results2) = crossfid_test_assets
 
     if process_result:
-        results1 = ProcessedResult(results1)
+        results1 = FastCountsResult(results1)
     if process_result:
-        results2 = ProcessedResult(results2)
+        results2 = FastCountsResult(results2)
 
     # set comparison results
     crossfid.comparison_results = results1

@@ -12,7 +12,7 @@ import scipy as sp
 from qiskit.result import Result
 
 from ..utilities import (
-    ProcessedResult,
+    FastCountsResult,
     bootstrap_resample,
     RandomMeasurementHandler,
 )
@@ -193,7 +193,7 @@ class CrossFidelity(CostInterface):
             if isinstance(results, Result):
                 self._comparison_results = results
             elif isinstance(results, dict):
-                self._comparison_results = ProcessedResult(
+                self._comparison_results = FastCountsResult(
                     Result.from_dict(results))
             else:
                 raise TypeError(
@@ -371,10 +371,10 @@ class CrossFidelity(CostInterface):
             # case without bootstrapping, this only includes standard error
             # arising from counts spread (currently not even that)
 
-            if isinstance(results, ProcessedResult):
+            if isinstance(results, FastCountsResult):
                 tmp_results = results
             elif isinstance(results, Result):
-                tmp_results = ProcessedResult(results)
+                tmp_results = FastCountsResult(results)
             else:
                 raise TypeError(
                     'results type not recognised: '+f'{type(results)}')
@@ -383,10 +383,10 @@ class CrossFidelity(CostInterface):
                 circ_namesA('')
             )
 
-            if isinstance(self._comparison_results, ProcessedResult):
+            if isinstance(self._comparison_results, FastCountsResult):
                 tmp_comparison_results = self._comparison_results
             elif isinstance(self._comparison_results, Result):
-                tmp_comparison_results = ProcessedResult(
+                tmp_comparison_results = FastCountsResult(
                     self._comparison_results)
             else:
                 raise TypeError(
@@ -453,7 +453,7 @@ def _load_experiment_single_u(
     ----------
     experiment_idx : int
         Index of experiment to access
-    results : qiskit.result.Result OR ProcessedResult
+    results : qiskit.result.Result OR FastCountsResult
         Results object
     nb_qubits : int, or None
         If not None, will raise an error if the number of qubits found in the
@@ -481,7 +481,7 @@ def _load_experiment_single_u(
     num_qubits = len(bin_counts_keys[0])
     counts = np.array(list(counts_dict.values()))
 
-    if isinstance(results, ProcessedResult):
+    if isinstance(results, FastCountsResult):
         int_counts_keys = results.int_keys[experiment_idx]
 
         # quick consistency check
@@ -508,7 +508,7 @@ def _load_experiment_single_u(
 
 def _get_results_access_map(results):
     """ """
-    if isinstance(results, ProcessedResult):
+    if isinstance(results, FastCountsResult):
         return results.results_access_map
     elif isinstance(results, Result):
         # make results access maps for speed
