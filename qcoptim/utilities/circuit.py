@@ -9,7 +9,7 @@ from numpy import arctan as atan
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import Measure
-from qiskit.circuit.library import RZGate
+from qiskit.circuit.library import RZGate, RYGate
 from qiskit.utils import QuantumInstance
 from qiskit.quantum_info import random_unitary
 
@@ -205,7 +205,45 @@ def bind_params(circ, param_values, param_variables=None, param_name=None):
     return bound_circ
 
 
-def add_random_measurements(circuit, num_rand, active_qubits=None, seed=None):
+def _make_identity_random_unitaries(num_qubits, rng):
+    """ """
+    return [RZGate(0.) for _ in range(num_qubits)]
+
+
+def _make_1qHaar_random_unitaries(num_qubits, rng):
+    """ """
+    unitaries = []
+    for _ in range(num_qubits):
+        unitaries.append(random_unitary(2, seed=rng))
+    return unitaries
+
+
+def _make_rypiOver3_random_unitaries(num_qubits, rng):
+    """ """
+    unitaries = []
+    
+    # 1/3 of qubits get each rotation angle
+    for idx in range(num_qubits):
+        if idx % 3 == 0:
+            unitaries.append(RYGate(0.))
+        elif idx % 3 == 1:
+            unitaries.append(RYGate(np.pi/3.))
+        elif idx % 3 == 2:
+            unitaries.append(RYGate(2*np.pi/3.))
+
+    # shuffle positions
+    rng.shuffle(unitaries)
+
+    return unitaries
+
+
+def add_random_measurements(
+    circuit,
+    num_rand,
+    active_qubits=None,
+    seed=None,
+    mode='1qHaar',
+):
     """
     Add single qubit measurements in Haar random basis to all the qubits, at
     the end of the circuit. Copies the circuit so preserves registers,
@@ -222,13 +260,19 @@ def add_random_measurements(circuit, num_rand, active_qubits=None, seed=None):
         If passed, random measurements will only be applied to these qubits.
     seed : int, optional
         Random number seed for reproducibility
+    mode : str, optional
+        How to generate the random measurements, supported options:
+            'identity' : trivial case, do nothing
+            '1qHaar' : single qubit Haar random unitaries
+            'rypiOver3' : 1/3 of qubits are acted on by identities, 1/3 by
+                          Ry(pi/3), and 1/3 by Ry(2pi/3)
 
     Returns
     -------
     purity_circuits : list of qiskit circuits
         Copies of input circuit, with random unitaries added to the end
     """
-    rand_state = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed)
 
     # by default apply to all qubits
     if active_qubits is None:
@@ -237,13 +281,26 @@ def add_random_measurements(circuit, num_rand, active_qubits=None, seed=None):
     rand_meas_circuits = []
     for _ in range(num_rand):
 
+        # make rand gates
+        if mode == 'identity':
+            random_gates = _make_identity_random_unitaries(
+                len(active_qubits), rng)
+        elif mode == '1qHaar':
+            random_gates = _make_1qHaar_random_unitaries(
+                len(active_qubits), rng)
+        elif mode == 'rypiOver3':
+            random_gates = _make_rypiOver3_random_unitaries(
+                len(active_qubits), rng)
+        else:
+            raise ValueError(
+                'random measurement mode not recognised: '+f'{mode}')
+
         # copy circuit to preserve registers, but remove any final measurements
         new_circ = circuit.copy()
         new_circ.remove_final_measurements()
 
         # add random single qubit unitaries
-        for qb_idx in active_qubits:
-            rand_gate = random_unitary(2, seed=rand_state)
+        for qb_idx, rand_gate in zip(active_qubits, random_gates):
             new_circ.append(rand_gate, [qb_idx])
 
         # adapted from qiskit.QuantumCircuit.measure_active() source
@@ -277,6 +334,7 @@ class RandomMeasurementHandler():
         seed=None,
         circ_name=None,
         transpiler='instance',
+        mode='1qHaar',
     ):
         """
         Parameters
@@ -297,6 +355,11 @@ class RandomMeasurementHandler():
             Choose how to transpile circuits, current options are:
                 'instance' : use quantum instance
                 'pytket' : use pytket compiler
+        mode : str, optional
+            How to generate the random measurements, supported options:
+                '1qHaar' : single qubit Haar random unitaries
+                'rypiOver3' : 1/3 of qubits are acted on by identities, 1/3 by
+                              Ry(pi/3), and 1/3 by Ry(2pi/3)
         """
         self.ansatz = ansatz
         self.instance = instance
@@ -312,11 +375,12 @@ class RandomMeasurementHandler():
             self.instance, method=transpiler, enforce_bijection=True)
 
         # make and name measurement circuits
+        self.mode = mode
         self._meas_circuits = add_random_measurements(
             t_ansatz_circ,
             self.num_random,
             active_qubits=self.ansatz.transpiler_map.values(),
-            seed=seed,
+            seed=seed, mode=mode,
         )
 
         # convert measurement instructions to the backend's gateset

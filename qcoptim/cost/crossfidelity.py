@@ -31,6 +31,7 @@ class CrossFidelity(CostInterface):
         instance=None,
         nb_random=None,
         seed=None,
+        mode='1qHaar',
         comparison_results=None,
         num_bootstraps=1000,
         prefixA='CrossFid',
@@ -49,6 +50,12 @@ class CrossFidelity(CostInterface):
             The number of random unitaries to average over
         seed : int, optional
             Seed used to generate random unitaries
+        mode : str, optional
+            How to generate the random measurements, passed to 
+            RandomMeasurementHandler constructor. Supported options:
+                '1qHaar' : single qubit Haar random unitaries
+                'rypiOver3' : 1/3 of qubits are acted on by identities, 1/3 by 
+                              Ry(pi/3), and 1/3 by Ry(2pi/3)
         comparison_results : {dict, None, qiskit.results.Result}
             The use cases where None would be passed is if we are using
             this object to generate the comparison_results object for a
@@ -106,6 +113,7 @@ class CrossFidelity(CostInterface):
                 seed=seed,
                 circ_name=circ_name,
                 transpiler=transpiler,
+                mode=mode,
             )
         else:
             if ansatz is not None and ansatz != rand_meas_handler.ansatz:
@@ -139,8 +147,20 @@ class CrossFidelity(CostInterface):
         return self._rand_meas_handler.instance
 
     @property
+    def random_unitary_mode(self):
+        return self._rand_meas_handler.mode
+
+    @property
     def comparison_results(self):
         return self._comparison_results
+
+    @property
+    def meas_circuits(self):
+        """
+        Returns list of measurement circuits needed to evaluate the cost function
+        """
+        circs = self._rand_meas_handler._meas_circuits
+        return circs
 
     @comparison_results.setter
     def comparison_results(self, results):
