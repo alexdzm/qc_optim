@@ -37,6 +37,21 @@ FREE_LIST_DEVICES = [
 ]
 
 
+def _extract_number_classical_bits(header):
+    """
+    Trying to pull out from the results the number of qubits that were measured
+    (as opposed to number of qubits present in the circuit, which is 
+    header.n_qubits)
+    
+    this is a total hack, and probably does not work in general
+    """
+    assert isinstance(header.creg_sizes, list)
+    assert len(header.creg_sizes) == 1
+    assert isinstance(header.creg_sizes[0], list)
+    assert isinstance(header.creg_sizes[0][0], str)
+    return header.creg_sizes[0][1]
+
+
 class FastCountsResult(Result):
     """
     The qiskit results class can be slow. This derived class pre-processes a
@@ -89,7 +104,7 @@ class FastCountsResult(Result):
 
             if expand:
 
-                n_qubits = res.header.n_qubits
+                n_qubits = _extract_number_classical_bits(res.header)
                 self.int_keys.append(np.arange(2**n_qubits))
                 tmp = {}
                 for val in range(2**n_qubits):
@@ -155,7 +170,8 @@ class FastCountsResult(Result):
             elif isinstance(exp_name, str):
                 _idx = self.results_access_map[exp_name]
 
-            tmp_n_qubits = self.results[_idx].header.n_qubits
+            tmp_n_qubits = _extract_number_classical_bits(
+                self.results[_idx].header)
             if n_qubits is None:
                 n_qubits = tmp_n_qubits
             elif n_qubits != tmp_n_qubits:
