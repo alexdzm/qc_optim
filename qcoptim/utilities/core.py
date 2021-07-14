@@ -681,7 +681,7 @@ def get_ATFIM_qubit_op(
     J=1,
     hX=0,
     hZ=0,
-    pbc=False,
+    pbc=True,
     ):
     """ 
     Construct the qubit Hamiltonian for 1d ATFIM with X and Z fields: 
@@ -710,7 +710,7 @@ def get_ATFIM_qubit_op(
     pauli_terms = []
 
     # ZZ terms
-    assert J>0, "For the ATFIM model the Ising coupling (J) must be positive."
+    #assert J>0, "For the ATFIM model the Ising coupling (J) must be positive."
     pauli_terms += [ (J,Pauli.from_label('I'*(i)+'ZZ'+'I'*((N-1)-(i+1)))) for i in range(N-1) ]
     # optional periodic boundary condition term
     if pbc:

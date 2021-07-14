@@ -597,7 +597,51 @@ class RegularXYZAnsatz(BaseAnsatz):
 
         return qc
 
+def QAOA(
+    nb_qubits=4,
+    M=2, #for the 2 parts of the hamiltonaion
+    p=5,
+    **kwargs):
+    """
+    TODO: add 3 part ising interactions
+    Function to generater the 'bang-bang' ansatz as described in:
+    http://arxiv.org/abs/2007.14338
 
+    Parameters
+    ----------
+    nb_qubits: The number of qubits, each representing one spin in the 1D ising model.
+    M: int, the number of components of the hamiltonian. Default is 3, one for x and z          directions and one for interactions terms
+    p:int, cicuit depth.
+    hx:float, x direction field strength.
+    hz:float, z direction field strength.
+
+    Returns:
+    -------
+    c:obj, A Qiskit circuit object with all free parameters, containing nb_qubits qubits.
+    """
+
+
+    nb_params=p*M
+    c=qk.QuantumCircuit(nb_qubits)
+    name_params = ['R'+str(i) for i in range(nb_params)] #use name convenstion from boisvqe
+    rotations=[c.rzz,c.rx,c.i] #Nb The pauli decomposition of the ising chain hamiltonian
+
+    counter=0
+    for i in range(p):
+        for j in range(M):
+            param=qk.circuit.Parameter(name_params[counter])
+            gate=rotations[j]
+            counter+=1
+            for k in range(nb_qubits):
+                if j==0 and k<nb_qubits-1: #checking if 2 qubit gate
+                    gate(param,k,k+1)
+                elif j==0 and k==nb_qubits-1:
+                    gate(param,0,k)
+                elif j==1:
+                    gate(param,k)
+    
+    return AnsatzFromCircuit(c)
+    
 class RegularU3Ansatz(BaseAnsatz):
     """ """
 
