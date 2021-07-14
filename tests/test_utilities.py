@@ -118,7 +118,7 @@ def test_transpile_circuit(method):
         assert param in t_circ.parameters
 
 
-def test_add_random_measurements():
+def test_add_random_measurements_active_qubits():
     """ """
     circ = RandomAnsatz(4, 3).circuit
 

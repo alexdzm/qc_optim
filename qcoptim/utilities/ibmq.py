@@ -2,6 +2,8 @@
 Functions and classes for interacting with IBMQ backends
 """
 
+import numpy as np
+
 from qiskit import IBMQ, Aer, QuantumRegister
 from qiskit.utils import QuantumInstance
 from qiskit.aqua.utils.backend_utils import (
@@ -11,6 +13,7 @@ from qiskit.aqua.utils.backend_utils import (
 from qiskit.ignis.mitigation.measurement import CompleteMeasFitter
 from qiskit.providers.aer import noise
 from qiskit.providers.aer.noise import NoiseModel
+from qiskit.result import Result
 
 NB_SHOTS_DEFAULT = 256
 OPTIMIZATION_LEVEL_DEFAULT = 1
@@ -32,6 +35,170 @@ FREE_LIST_DEVICES = [
     'ibmq_rome',
     'qasm_simulator',
 ]
+
+
+def _extract_number_classical_bits(header):
+    """
+    Trying to pull out from the results the number of qubits that were measured
+    (as opposed to number of qubits present in the circuit, which is 
+    header.n_qubits)
+    
+    this is a total hack, and probably does not work in general
+    """
+    assert isinstance(header.creg_sizes, list)
+    assert len(header.creg_sizes) == 1
+    assert isinstance(header.creg_sizes[0], list)
+    assert isinstance(header.creg_sizes[0][0], str)
+    return header.creg_sizes[0][1]
+
+
+class FastCountsResult(Result):
+    """
+    The qiskit results class can be slow. This derived class pre-processes a
+    results object to make calls to `.get_counts()` much faster
+    """
+    def __init__(self, raw_results, expand=False):
+        """
+        Parameters
+        ----------
+        raw_results : qiskit.result.Result
+            Results object to process
+        expand : boolean, default False
+            If set to True, counts histogram expanded to have 2**(n_qubits)
+            entries, i.e. including all zeros excluded by qiskit
+        """
+
+        # call base class constructor
+        _date = None
+        if hasattr(raw_results, 'date'):
+            _date = raw_results.date
+        _status = None
+        if hasattr(raw_results, 'status'):
+            _status = raw_results.status
+        _header = None
+        if hasattr(raw_results, 'header'):
+            _header = raw_results.header
+        super().__init__(
+            backend_name=raw_results.backend_name,
+            backend_version=raw_results.backend_version,
+            qobj_id=raw_results.qobj_id,
+            job_id=raw_results.job_id,
+            success=raw_results.success,
+            results=raw_results.results,
+            date=_date,
+            status=_status,
+            header=_header,
+            **raw_results._metadata,
+        )
+
+        # make results access maps for speed
+        self.results_access_map = {
+            res.header.name: idx for idx, res in enumerate(raw_results.results)
+        }
+
+        # get and cache counts dictionary
+        self.processed_counts = []
+        self.int_keys = []
+        for idx, res in enumerate(raw_results.results):
+            _counts_dict = raw_results.get_counts(idx)
+
+            if expand:
+
+                n_qubits = _extract_number_classical_bits(res.header)
+                self.int_keys.append(np.arange(2**n_qubits))
+                tmp = {}
+                for val in range(2**n_qubits):
+                    meas_str = format(
+                        int(str(bin(val))[2:], 2), '0{}b'.format(n_qubits)
+                    )
+                    tmp[meas_str] = _counts_dict.get(meas_str, 0)
+                self.processed_counts.append(tmp)
+
+            else:
+
+                int_keys = [int(binval, 2) for binval in _counts_dict.keys()]
+
+                # sort based on int_keys and save
+                _order = np.argsort(int_keys)
+                self.int_keys.append(np.array(int_keys)[_order])
+                self.processed_counts.append(
+                    dict(zip(
+                        np.array(list(_counts_dict.keys()))[_order],
+                        np.array(list(_counts_dict.values()))[_order]
+                    ))
+                )
+
+    def get_counts(self, access_key):
+        """ """
+        if not isinstance(access_key, (int, str)):
+            # fall back on parent class method
+            return super().get_counts(access_key)
+
+        if isinstance(access_key, str):
+            access_key = self.results_access_map[access_key]
+
+        return self.processed_counts[access_key]
+
+    def combine_counts(self, names, save_name):
+        """
+        Parameters
+        ----------
+        names : list[int] OR list[str]
+            List of experiments indexes (as either ints or strings) to combine
+        save_name : str
+            Name to use to save combined counts
+        """
+        if len(names) == 0:
+            # skip if not passed any experiments
+            return
+
+        if save_name in self.results_access_map:
+            # skip if already have a result with this name
+            return
+
+        if not all(isinstance(_nm, (int, str)) for _nm in names):
+            raise TypeError(
+                'Can only combine counts using str and int experiment'
+                + ' references.'
+            )
+
+        n_qubits = None
+        summed_counts = None
+        for exp_name in names:
+            if isinstance(exp_name, int):
+                _idx = exp_name
+            elif isinstance(exp_name, str):
+                _idx = self.results_access_map[exp_name]
+
+            tmp_n_qubits = _extract_number_classical_bits(
+                self.results[_idx].header)
+            if n_qubits is None:
+                n_qubits = tmp_n_qubits
+            elif n_qubits != tmp_n_qubits:
+                raise ValueError(
+                    'Trying to combine incompatible experiments, with'
+                    + ' different numbers of qubits'
+                )
+            if summed_counts is None:
+                summed_counts = np.zeros(2**n_qubits, dtype=int)
+
+            summed_counts[self.int_keys[_idx]] += np.array(
+                list(self.processed_counts[_idx].values())
+            )
+
+        # compress by removing zeros
+        _nonzero_idx = np.nonzero(summed_counts)
+        int_keys = np.arange(2**n_qubits)[_nonzero_idx]
+        meas_strs = [
+            format(int(str(bin(val))[2:], 2), '0{}b'.format(n_qubits))
+            for val in int_keys
+        ]
+
+        self.results_access_map[save_name] = len(self.results_access_map)
+        self.int_keys.append(int_keys)
+        self.processed_counts.append(
+            dict(zip(meas_strs, summed_counts[_nonzero_idx]))
+        )
 
 
 def make_quantum_instance(
