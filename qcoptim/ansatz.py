@@ -627,6 +627,8 @@ def QAOA(
     rotations=[c.rzz,c.rx,c.i] #Nb The pauli decomposition of the ising chain hamiltonian
 
     counter=0
+    for i in range (nb_qubits):
+        c.h(i)
     for i in range(p):
         for j in range(M):
             param=qk.circuit.Parameter(name_params[counter])
