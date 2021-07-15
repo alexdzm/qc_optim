@@ -599,8 +599,7 @@ class RegularXYZAnsatz(BaseAnsatz):
 
 def QAOA(
     nb_qubits=4,
-    M=2, #for the 2 parts of the hamiltonaion
-    p=5,
+    M=3, #for the 2 parts of the hamiltonaion
     **kwargs):
     """
     TODO: add 3 part ising interactions
@@ -619,12 +618,13 @@ def QAOA(
     -------
     c:obj, A Qiskit circuit object with all free parameters, containing nb_qubits qubits.
     """
-
-
+    p=int(nb_qubits/2)
+    if nb_qubits%2!=0:
+        print('Odd number of qubits, cricuit depth is rounded up to: {depth}'.format(depth=p))
     nb_params=p*M
     c=qk.QuantumCircuit(nb_qubits)
     name_params = ['R'+str(i) for i in range(nb_params)] #use name convenstion from boisvqe
-    rotations=[c.rzz,c.rx,c.i] #Nb The pauli decomposition of the ising chain hamiltonian
+    rotations=[c.rzz,c.rx,c.rz] #Nb The pauli decomposition of the ising chain hamiltonian
 
     counter=0
     for i in range (nb_qubits):
@@ -642,7 +642,8 @@ def QAOA(
                 elif j==1:
                     gate(param,k)
     
-    return AnsatzFromCircuit(c)
+    return c
+    #return AnsatzFromCircuit(c)
     
 class RegularU3Ansatz(BaseAnsatz):
     """ """
