@@ -641,9 +641,11 @@ def QAOA(
                     gate(param,0,k)
                 elif j==1:
                     gate(param,k)
+                elif j==2:
+                    gate(param,k)
     
-    return c
-    #return AnsatzFromCircuit(c)
+
+    return AnsatzFromCircuit(c)
     
 class RegularU3Ansatz(BaseAnsatz):
     """ """
